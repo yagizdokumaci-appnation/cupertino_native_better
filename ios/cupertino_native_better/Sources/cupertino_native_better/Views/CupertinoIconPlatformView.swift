@@ -2,9 +2,18 @@ import Flutter
 import UIKit
 import SVGKit
 
+private final class IconContainerView: UIView {
+  var onLayout: (() -> Void)?
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    onLayout?()
+  }
+}
+
 class CupertinoIconPlatformView: NSObject, FlutterPlatformView {
   private let channel: FlutterMethodChannel
-  private let container: UIView
+  private let container: IconContainerView
   private let imageView: UIImageView
 
   private var name: String = ""
@@ -19,10 +28,12 @@ class CupertinoIconPlatformView: NSObject, FlutterPlatformView {
   private var palette: [UIColor] = []
   private var renderingMode: String?
   private var gradientEnabled: Bool = false
+  private var fitImage: UIImage?
+  private var unscaledImage: UIImage?
 
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {
     self.channel = FlutterMethodChannel(name: "CupertinoNativeIcon_\(viewId)", binaryMessenger: messenger)
-    self.container = UIView(frame: frame)
+    self.container = IconContainerView(frame: frame)
     self.imageView = UIImageView(frame: .zero)
 
     if let dict = args as? [String: Any] {
@@ -61,6 +72,7 @@ class CupertinoIconPlatformView: NSObject, FlutterPlatformView {
       imageView.topAnchor.constraint(equalTo: container.topAnchor),
       imageView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
     ])
+    container.onLayout = { [weak self] in self?.updateImage() }
 
     rebuild()
 
@@ -153,11 +165,24 @@ class CupertinoIconPlatformView: NSObject, FlutterPlatformView {
       img = UIImage(systemName: name)
     }
     
-    guard var image = img else { imageView.image = nil; return }
+    guard let base = img else {
+      fitImage = nil
+      unscaledImage = nil
+      imageView.image = nil
+      return
+    }
+    fitImage = styled(base, scale: nil)
+    unscaledImage = isSymbol ? styled(base, scale: .large) : nil
+    updateImage()
+  }
+
+  private func styled(_ base: UIImage, scale: UIImage.SymbolScale?) -> UIImage {
+    var image = base
 
     // Apply size configuration
     if let s = size {
-      let cfg = UIImage.SymbolConfiguration(pointSize: s)
+      var cfg = UIImage.SymbolConfiguration(pointSize: s)
+      if let scale = scale { cfg = cfg.applying(UIImage.SymbolConfiguration(scale: scale)) }
       if let newImg = image.applyingSymbolConfiguration(cfg) { image = newImg }
     }
 
@@ -205,7 +230,24 @@ class CupertinoIconPlatformView: NSObject, FlutterPlatformView {
       // if #available(iOS 18.0, *), let cfg = UIImage.SymbolConfiguration.preferringGradient() { image = image.applyingSymbolConfiguration(cfg) ?? image }
     }
 
-    imageView.image = image
+    return image
+  }
+
+  private var isSymbol: Bool { imageData == nil && assetPath == nil && customIconBytes == nil }
+
+  // UIButton draws an SF Symbol unscaled at the large symbol scale, so a
+  // 16pt line.3.horizontal comes out ~20x10. Match that whenever the box has
+  // room for it (the iOS < 26 CNButton fallback); otherwise keep aspect-fitting
+  // the default-scale image into the box as before.
+  private func updateImage() {
+    let bounds = container.bounds.size
+    if let img = unscaledImage, img.size.width <= bounds.width, img.size.height <= bounds.height {
+      imageView.contentMode = .center
+      if imageView.image !== img { imageView.image = img }
+    } else {
+      imageView.contentMode = .scaleAspectFit
+      if imageView.image !== fitImage { imageView.image = fitImage }
+    }
   }
 
   // Use shared utility functions

@@ -24,6 +24,7 @@ class CNIcon extends StatefulWidget {
     this.color,
     this.mode,
     this.gradient,
+    this.width,
     this.height,
   }) : assert(
          symbol != null || imageAsset != null || customIcon != null,
@@ -53,6 +54,12 @@ class CNIcon extends StatefulWidget {
 
   /// Whether to enable the system gradient when available.
   final bool? gradient;
+
+  /// Optional fixed width; defaults to the icon's size.
+  ///
+  /// On iOS an SF Symbol keeps its natural size inside a larger box instead
+  /// of being shrunk to fit a [size] x [size] one.
+  final double? width;
 
   /// Optional fixed height; defaults to the icon's size.
   final double? height;
@@ -123,7 +130,10 @@ class _CNIconState extends State<CNIcon> {
       // as a black dot for the guard's debug-only 500 ms on iOS < 26.
       final size =
           widget.size ?? widget.imageAsset?.size ?? widget.symbol?.size ?? 24.0;
-      return SizedBox(width: size, height: widget.height ?? size);
+      return SizedBox(
+        width: widget.width ?? size,
+        height: widget.height ?? size,
+      );
     }
 
     // Priority: imageAsset > customIcon > symbol
@@ -137,7 +147,7 @@ class _CNIconState extends State<CNIcon> {
             final defaultSize =
                 widget.size ?? (widget.imageAsset?.size ?? 24.0);
             return SizedBox(
-              width: defaultSize,
+              width: widget.width ?? defaultSize,
               height: widget.height ?? defaultSize,
             );
           }
@@ -163,7 +173,10 @@ class _CNIconState extends State<CNIcon> {
         future: iconDataToImageBytes(widget.customIcon!, size: iconSize),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return SizedBox(width: iconSize, height: widget.height ?? iconSize);
+            return SizedBox(
+              width: widget.width ?? iconSize,
+              height: widget.height ?? iconSize,
+            );
           }
           return _buildNativeIcon(context, customIconBytes: snapshot.data);
         },
@@ -259,7 +272,7 @@ class _CNIconState extends State<CNIcon> {
     final fallbackSize =
         widget.size ?? (imageAsset?.size ?? widget.symbol?.size ?? 24.0);
     final h = widget.height ?? fallbackSize;
-    final w = fallbackSize;
+    final w = widget.width ?? fallbackSize;
     // AbsorbPointer keeps the icon's hit area for ancestors but keeps the
     // UIKit view out of the gesture arena, where it would otherwise win the
     // sweep and cancel an enclosing button's tap.
@@ -475,7 +488,7 @@ class _CNIconState extends State<CNIcon> {
     }
 
     final h = widget.height ?? widget.size ?? 24.0;
-    final w = widget.size ?? 24.0;
+    final w = widget.width ?? widget.size ?? 24.0;
     return SizedBox(width: w, height: h, child: iconWidget);
   }
 }
