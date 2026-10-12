@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
@@ -48,5 +50,5 @@ void main() {
 
     expect(taps, 1);
     debugDefaultTargetPlatformOverride = null;
-  });
+  }, skip: !(Platform.isMacOS || Platform.isIOS));
 }
