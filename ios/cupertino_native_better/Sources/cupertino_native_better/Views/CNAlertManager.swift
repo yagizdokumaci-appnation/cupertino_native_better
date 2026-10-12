@@ -81,7 +81,6 @@ final class CNAlertManager: NSObject {
         // ("already presenting") and dropped silently, leaving this call
         // unanswered forever.
         if let stale = presentedAlert {
-            presentedAlert = nil
             send(nil)
             stale.dismiss(animated: false) { [weak self] in
                 self?.present(config: config, on: presenter, result: result)
@@ -128,6 +127,10 @@ final class CNAlertManager: NSObject {
             return
         }
 
+        // A deferred replacement lands here from a dismissal completion, by
+        // which time another `show` may already have stored its result. Answer
+        // that call rather than overwrite it, or its Dart await never returns.
+        send(nil)
         pendingResult = result
 
         let alert = UIAlertController(title: config.title,
@@ -176,8 +179,7 @@ final class CNAlertManager: NSObject {
 
         // `preferredAction` must reference an action already in
         // `alert.actions`, so this runs after the loop above.
-        if let preferredIndex = config.actions.firstIndex(where: { $0.preferred }),
-           preferredIndex < alert.actions.count {
+        if let preferredIndex = config.actions.firstIndex(where: { $0.preferred }) {
             alert.preferredAction = alert.actions[preferredIndex]
         }
 
@@ -227,11 +229,13 @@ final class CNAlertManager: NSObject {
 
     /// Walks to the top of `window`'s presentation chain, stopping before
     /// `stale` so an alert being replaced is never used to present its
-    /// replacement.
+    /// replacement, and before any controller already being dismissed, which
+    /// UIKit would drop a presentation onto silently.
     private func topPresenter(in window: UIWindow?,
                               skipping stale: UIAlertController?) -> UIViewController? {
         guard var vc = window?.rootViewController else { return nil }
-        while let presented = vc.presentedViewController, presented !== stale {
+        while let presented = vc.presentedViewController,
+              presented !== stale, !presented.isBeingDismissed {
             vc = presented
         }
         return vc
