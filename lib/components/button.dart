@@ -1255,11 +1255,29 @@ class _CNButtonState extends State<CNButton> with ModalHideMixin<CNButton> {
     final buttonWidth = widget.isIcon
         ? (widget.config.width ?? calculatedSize ?? defaultHeight)
         : null;
-    final buttonPadding = widget.isIcon
+    var buttonPadding = widget.isIcon
         ? (effectivePadding ?? const EdgeInsets.all(8))
         : (widget.config.padding ??
               const EdgeInsets.symmetric(horizontal: 12, vertical: 8));
     final borderRadius = widget.config.borderRadius ?? defaultHeight / 2;
+
+    // The native button draws an SF Symbol unscaled across its whole box.
+    // Squeezing it into the padded icon box instead rendered it at about half
+    // that size, so hand the symbol the full button here too.
+    if (isIconOnlyButton &&
+        widget.imageAsset == null &&
+        widget.customIcon == null &&
+        widget.icon != null &&
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      child = CNIcon(
+        symbol: widget.icon,
+        size: widget.icon!.size,
+        color: widget.icon!.color,
+        width: buttonWidth,
+        height: defaultHeight,
+      );
+      buttonPadding = EdgeInsets.zero;
+    }
 
     final button = SizedBox(
       height: defaultHeight,
