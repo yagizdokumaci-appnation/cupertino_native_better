@@ -38,6 +38,7 @@ import 'demos/pr42_tabbar_iconsize_customicon_test.dart';
 import 'demos/issue33_svg_tabbar_test.dart';
 import 'demos/stack_positioned_tabbar_test.dart';
 import 'demos/tabbar_split_search_clip_test.dart';
+import 'demos/tabbar_circular_right_item.dart';
 import 'demos/alert.dart';
 
 void main() {
@@ -695,6 +696,23 @@ class HomePage extends StatelessWidget {
                   Navigator.of(context).push(
                     CupertinoPageRoute(
                       builder: (_) => const BottomNavTestPage(),
+                    ),
+                  );
+                },
+              ),
+              CupertinoListTile(
+                title: Text('Tab Bar Circular Right Item'),
+                leading: CNIcon(
+                  symbol: CNSymbol(
+                    'circle.righthalf.filled',
+                    color: accentColor,
+                  ),
+                ),
+                trailing: CupertinoListTileChevron(),
+                onTap: () {
+                  Navigator.of(context).push(
+                    CupertinoPageRoute(
+                      builder: (_) => const TabBarCircularRightItemDemoPage(),
                     ),
                   );
                 },
