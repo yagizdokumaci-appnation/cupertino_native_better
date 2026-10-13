@@ -106,6 +106,7 @@ class CNTabBar extends StatefulWidget {
     this.height,
     this.split = false,
     this.rightCount = 1,
+    this.circularRightItem = false,
     this.shrinkCentered = true,
     this.splitSpacing =
         12.0, // Apple's recommended spacing for visual separation
@@ -121,6 +122,10 @@ class CNTabBar extends StatefulWidget {
          'Tab bar should have 5 or fewer items for optimal usability',
        ),
        assert(rightCount >= 1, 'Right count must be at least 1'),
+       assert(
+         !circularRightItem || (split && rightCount == 1),
+         'circularRightItem requires split: true and rightCount: 1',
+       ),
        assert(
          rightCount < items.length || searchItem != null,
          'Right count must be less than total items',
@@ -166,6 +171,28 @@ class CNTabBar extends StatefulWidget {
   /// Note: When [searchItem] is provided, this value is ignored as the
   /// search tab automatically becomes the right-side floating element.
   final int rightCount; // how many trailing items to pin right when split
+
+  /// When true, the single right-pinned item renders as a circular Liquid
+  /// Glass button (icon + label) instead of a capsule.
+  ///
+  /// Requires [split] to be true and [rightCount] to be 1. Defaults to false,
+  /// which keeps the standard split layout. iOS 26+ only; ignored by the
+  /// macOS and Flutter fallback bars.
+  ///
+  /// ```dart
+  /// CNTabBar(
+  ///   items: [
+  ///     CNTabBarItem(label: 'Tools', icon: CNSymbol('printer')),
+  ///     CNTabBarItem(label: 'Files', icon: CNSymbol('folder')),
+  ///     CNTabBarItem(label: 'Scan', icon: CNSymbol('doc.viewfinder')),
+  ///   ],
+  ///   currentIndex: _index,
+  ///   onTap: (i) => setState(() => _index = i),
+  ///   split: true,
+  ///   circularRightItem: true,
+  /// )
+  /// ```
+  final bool circularRightItem;
 
   /// When true, centers the split groups more tightly.
   final bool shrinkCentered;
@@ -286,6 +313,7 @@ class _CNTabBarState extends State<CNTabBar> {
   List<String>? _lastBadges;
   bool? _lastSplit;
   int? _lastRightCount;
+  bool? _lastCircularRightItem;
   double? _lastSplitSpacing;
   double? _lastIconSize;
   String? _lastLabelFontFamily;
@@ -736,6 +764,7 @@ class _CNTabBarState extends State<CNTabBar> {
       if (widget.labelFontSize != null) 'labelFontSize': widget.labelFontSize,
       'split': _hasSearch ? true : widget.split,
       'rightCount': widget.rightCount,
+      'rightCircular': widget.circularRightItem,
       'splitSpacing': widget.splitSpacing,
       'style': capturedStyle
         ..addAll({
@@ -869,6 +898,7 @@ class _CNTabBarState extends State<CNTabBar> {
     _cacheItems();
     _lastSplit = widget.split;
     _lastRightCount = widget.rightCount;
+    _lastCircularRightItem = widget.circularRightItem;
     _lastSplitSpacing = widget.splitSpacing;
     _lastLabelFontFamily = widget.labelFontFamily;
     _lastLabelFontSize = widget.labelFontSize;
@@ -1098,15 +1128,18 @@ class _CNTabBarState extends State<CNTabBar> {
       // Layout updates (split / insets)
       if (_lastSplit != widget.split ||
           _lastRightCount != widget.rightCount ||
+          _lastCircularRightItem != widget.circularRightItem ||
           _lastSplitSpacing != widget.splitSpacing) {
         await ch.invokeMethod('setLayout', {
           'split': widget.split,
           'rightCount': widget.rightCount,
+          'rightCircular': widget.circularRightItem,
           'splitSpacing': widget.splitSpacing,
           'selectedIndex': widget.currentIndex,
         });
         _lastSplit = widget.split;
         _lastRightCount = widget.rightCount;
+        _lastCircularRightItem = widget.circularRightItem;
         _lastSplitSpacing = widget.splitSpacing;
         _requestIntrinsicSize();
       }

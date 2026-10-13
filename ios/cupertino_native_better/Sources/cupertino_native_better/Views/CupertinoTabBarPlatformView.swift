@@ -12,6 +12,9 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
   // MARK: - State Properties
   private var isSplit: Bool = false
   private var rightCountVal: Int = 1
+  // Square right bar so the Liquid Glass capsule renders as a circle.
+  private var rightCircularVal: Bool = false
+  private var rightCircularWidth: NSLayoutConstraint?
   private var currentLabels: [String] = []
   private var currentSymbols: [String] = []
   private var currentActiveSymbols: [String] = []
@@ -94,6 +97,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
       }
       if let s = dict["split"] as? NSNumber { split = s.boolValue }
       if let rc = dict["rightCount"] as? NSNumber { rightCount = rc.intValue }
+      if let rcirc = dict["rightCircular"] as? NSNumber { rightCircularVal = rcirc.boolValue }
       if let sp = dict["splitSpacing"] as? NSNumber { splitSpacingVal = CGFloat(truncating: sp) }
       // content insets controlled by Flutter padding; keep zero here
     }
@@ -260,7 +264,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
           right.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -rightInset),
           rTop,
           rBottom,
-          right.widthAnchor.constraint(equalTo: container.widthAnchor, multiplier: rightFraction),
+          rightBarWidth(right, rightCount: rightCount, otherwise: right.widthAnchor.constraint(equalTo: container.widthAnchor, multiplier: rightFraction)),
           left.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: leftInset),
           left.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -spacing),
           lTop,
@@ -280,7 +284,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
           right.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -rightInset),
           rTop,
           rBottom,
-          right.widthAnchor.constraint(equalToConstant: adjustedRightWidth),
+          rightBarWidth(right, rightCount: rightCount, otherwise: right.widthAnchor.constraint(equalToConstant: adjustedRightWidth)),
           // Left bar fixed width, pinned to leading
           left.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: leftInset),
           lTop,
@@ -303,6 +307,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
         left.layoutIfNeeded()
         right.setNeedsLayout()
         right.layoutIfNeeded()
+        self.fitCircularRightBar(right)
         // Re-assign items to force label rendering
         let leftItems = left.items
         let rightItems = right.items
@@ -582,6 +587,7 @@ channel.setMethodCallHandler { [weak self] call, result in
         if let args = call.arguments as? [String: Any] {
           let split = (args["split"] as? NSNumber)?.boolValue ?? false
           let rightCount = (args["rightCount"] as? NSNumber)?.intValue ?? 1
+          self.rightCircularVal = (args["rightCircular"] as? NSNumber)?.boolValue ?? false
           // Insets are controlled by Flutter padding; keep stored zeros here
           let leftInset = self.leftInsetVal
           let rightInset = self.rightInsetVal
@@ -712,7 +718,7 @@ channel.setMethodCallHandler { [weak self] call, result in
                 right.trailingAnchor.constraint(equalTo: self.container.trailingAnchor, constant: -rightInset),
                 rTop,
                 rBottom,
-                right.widthAnchor.constraint(equalTo: self.container.widthAnchor, multiplier: rightFraction),
+                self.rightBarWidth(right, rightCount: rightCount, otherwise: right.widthAnchor.constraint(equalTo: self.container.widthAnchor, multiplier: rightFraction)),
                 left.leadingAnchor.constraint(equalTo: self.container.leadingAnchor, constant: leftInset),
                 left.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -spacing),
                 lTop,
@@ -731,7 +737,7 @@ channel.setMethodCallHandler { [weak self] call, result in
                 right.trailingAnchor.constraint(equalTo: self.container.trailingAnchor, constant: -rightInset),
                 rTop,
                 rBottom,
-                right.widthAnchor.constraint(equalToConstant: adjustedRightWidth),
+                self.rightBarWidth(right, rightCount: rightCount, otherwise: right.widthAnchor.constraint(equalToConstant: adjustedRightWidth)),
                 left.leadingAnchor.constraint(equalTo: self.container.leadingAnchor, constant: leftInset),
                 lTop,
                 lBottom,
@@ -752,6 +758,7 @@ channel.setMethodCallHandler { [weak self] call, result in
               left.layoutIfNeeded()
               right.setNeedsLayout()
               right.layoutIfNeeded()
+              self.fitCircularRightBar(right)
               // Re-assign items to force label rendering
               let leftItems = left.items
               let rightItems = right.items
@@ -1062,6 +1069,28 @@ channel.setMethodCallHandler { [weak self] call, result in
   }
 
   func view() -> UIView { container }
+
+  private func rightBarWidth(_ right: UITabBar, rightCount: Int, otherwise: NSLayoutConstraint) -> NSLayoutConstraint {
+    guard rightCircularVal && rightCount == 1 else {
+      rightCircularWidth = nil
+      return otherwise
+    }
+    // iOS 26 draws the glass platter at a fixed height (62pt) along the bar's
+    // top edge, inset 21pt horizontally — so a circle needs platter height plus
+    // both insets, not the bar's own height. Refined in fitCircularRightBar.
+    let c = right.widthAnchor.constraint(equalToConstant: 62 + 21 * 2)
+    rightCircularWidth = c
+    return c
+  }
+
+  private func fitCircularRightBar(_ right: UITabBar) {
+    guard let c = rightCircularWidth,
+          let platter = right.subviews
+            .filter({ $0.frame.width > 0 && $0.frame.width < right.bounds.width })
+            .max(by: { $0.frame.height < $1.frame.height }) else { return }
+    let target = platter.frame.height + (right.bounds.width - platter.frame.width)
+    if abs(c.constant - target) > 0.5 { c.constant = target }
+  }
 
   // MARK: - Appearance helpers
 
