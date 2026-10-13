@@ -182,7 +182,7 @@ class CNTabBar extends StatefulWidget {
   ///
   /// Requires [split] to be true and [rightCount] to be 1. Defaults to false,
   /// which keeps the standard split layout. iOS 26+ only; ignored by the
-  /// macOS and Flutter fallback bars.
+  /// macOS and Flutter fallback bars, and when [searchItem] is set.
   ///
   /// ```dart
   /// CNTabBar(
@@ -256,7 +256,9 @@ class CNTabBar extends StatefulWidget {
   /// each, so the content stays centered inside the selection pill. The bar
   /// height doesn't grow: up to about 6pt stays clean, while larger values
   /// push the selected icon past the pill's top edge and squeeze the label of
-  /// a [circularRightItem]. iOS only.
+  /// a [circularRightItem]. iOS 26+ only, stacked (icon-above-label) layout;
+  /// ignored by the macOS and Flutter fallback bars, and when [searchItem] is
+  /// set.
   final double? labelSpacing;
 
   /// Whether the tab bar automatically hides itself while a modal/sheet is
@@ -596,6 +598,12 @@ class _CNTabBarState extends State<CNTabBar> {
     // the correct tab from the first layout pass — no morph animation.
     if (_creationParams!['selectedIndex'] != widget.currentIndex) {
       _creationParams!['selectedIndex'] = widget.currentIndex;
+    }
+    _creationParams!['rightCircular'] = widget.circularRightItem;
+    if (widget.labelSpacing != null) {
+      _creationParams!['labelSpacing'] = widget.labelSpacing;
+    } else {
+      _creationParams!.remove('labelSpacing');
     }
 
     final platformView = _buildNativeTabBarPlatformView(_creationParams!);
