@@ -34,6 +34,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
   private var currentIconSizes: [CGFloat] = [] // Track icon sizes for dynamic height calculation
   private var labelFontFamily: String? = nil
   private var labelFontSize: CGFloat = 0 // 0 means system default (~10pt)
+  private var labelSpacingVal: CGFloat = 0
 
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {
     self.channel = FlutterMethodChannel(name: "CupertinoNativeTabBar_\(viewId)", binaryMessenger: messenger)
@@ -99,6 +100,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
       if let rc = dict["rightCount"] as? NSNumber { rightCount = rc.intValue }
       if let rcirc = dict["rightCircular"] as? NSNumber { rightCircularVal = rcirc.boolValue }
       if let sp = dict["splitSpacing"] as? NSNumber { splitSpacingVal = CGFloat(truncating: sp) }
+      if let ls = dict["labelSpacing"] as? NSNumber { labelSpacingVal = CGFloat(truncating: ls) }
       // content insets controlled by Flutter padding; keep zero here
     }
     // Font is read after super.init() below to use self.
@@ -182,7 +184,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
         }
 
         let title = (i < labels.count && !labels[i].isEmpty) ? labels[i] : nil
-        let item = UITabBarItem(title: title, image: image, selectedImage: selectedImage)
+        let item = self.makeItem(title: title, image: image, selectedImage: selectedImage)
         if i < badges.count && !badges[i].isEmpty {
           item.badgeValue = badges[i]
         }
@@ -548,7 +550,7 @@ channel.setMethodCallHandler { [weak self] call, result in
               }
 
               let title = (i < labels.count && !labels[i].isEmpty) ? labels[i] : nil
-              let item = UITabBarItem(title: title, image: image, selectedImage: selectedImage)
+              let item = self.makeItem(title: title, image: image, selectedImage: selectedImage)
               if i < badges.count && !badges[i].isEmpty {
                 item.badgeValue = badges[i]
               }
@@ -588,6 +590,7 @@ channel.setMethodCallHandler { [weak self] call, result in
           let split = (args["split"] as? NSNumber)?.boolValue ?? false
           let rightCount = (args["rightCount"] as? NSNumber)?.intValue ?? 1
           self.rightCircularVal = (args["rightCircular"] as? NSNumber)?.boolValue ?? false
+          self.labelSpacingVal = (args["labelSpacing"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
           // Insets are controlled by Flutter padding; keep stored zeros here
           let leftInset = self.leftInsetVal
           let rightInset = self.rightInsetVal
@@ -661,7 +664,7 @@ channel.setMethodCallHandler { [weak self] call, result in
               }
 
               let title = (i < labels.count && !labels[i].isEmpty) ? labels[i] : nil
-              let item = UITabBarItem(title: title, image: image, selectedImage: selectedImage)
+              let item = self.makeItem(title: title, image: image, selectedImage: selectedImage)
               if i < badges.count && !badges[i].isEmpty {
                 item.badgeValue = badges[i]
               }
@@ -1070,6 +1073,22 @@ channel.setMethodCallHandler { [weak self] call, result in
 
   func view() -> UIView { container }
 
+  // iOS 26 ignores UITabBarItem.imageInsets and per-item titlePositionAdjustment,
+  // but still honours an image's alignment rect and the appearance title offset.
+  // Half the gap goes to each so icon + label stay centred in the selection pill.
+  private func makeItem(title: String?, image: UIImage?, selectedImage: UIImage?) -> UITabBarItem {
+    guard labelSpacingVal > 0 else {
+      return UITabBarItem(title: title, image: image, selectedImage: selectedImage)
+    }
+    func raised(_ img: UIImage?) -> UIImage? {
+      guard let img = img else { return nil }
+      var insets = img.alignmentRectInsets
+      insets.bottom -= labelSpacingVal
+      return img.withAlignmentRectInsets(insets)
+    }
+    return UITabBarItem(title: title, image: raised(image), selectedImage: raised(selectedImage))
+  }
+
   private func rightBarWidth(_ right: UITabBar, rightCount: Int, otherwise: NSLayoutConstraint) -> NSLayoutConstraint {
     guard rightCircularVal && rightCount == 1 else {
       rightCircularWidth = nil
@@ -1102,6 +1121,11 @@ channel.setMethodCallHandler { [weak self] call, result in
     ap.shadowColor = .clear
     ap.shadowImage = UIImage()
     applyLabelFont(to: ap)
+    if labelSpacingVal > 0 {
+      let offset = UIOffset(horizontal: 0, vertical: labelSpacingVal / 2)
+      ap.stackedLayoutAppearance.normal.titlePositionAdjustment = offset
+      ap.stackedLayoutAppearance.selected.titlePositionAdjustment = offset
+    }
     return ap
   }
 

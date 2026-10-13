@@ -114,6 +114,7 @@ class CNTabBar extends StatefulWidget {
     this.searchController,
     this.labelFontFamily,
     this.labelFontSize,
+    this.labelSpacing,
     this.autoHideOnModal = true,
     this.autoHideOnPageTransition = true,
   }) : assert(items.length >= 2, 'Tab bar must have at least 2 items'),
@@ -122,6 +123,10 @@ class CNTabBar extends StatefulWidget {
          'Tab bar should have 5 or fewer items for optimal usability',
        ),
        assert(rightCount >= 1, 'Right count must be at least 1'),
+       assert(
+         labelSpacing == null || labelSpacing >= 0,
+         'labelSpacing must not be negative',
+       ),
        assert(
          !circularRightItem || (split && rightCount == 1),
          'circularRightItem requires split: true and rightCount: 1',
@@ -244,6 +249,16 @@ class CNTabBar extends StatefulWidget {
   /// is used (approximately 10pt on iOS).
   final double? labelFontSize;
 
+  /// Optional extra gap, in points, between each item's icon and its label.
+  ///
+  /// When null (default), the native spacing is used unchanged. The gap is
+  /// split evenly: the icon moves up and the label moves down by half of it
+  /// each, so the content stays centered inside the selection pill. The bar
+  /// height doesn't grow: up to about 6pt stays clean, while larger values
+  /// push the selected icon past the pill's top edge and squeeze the label of
+  /// a [circularRightItem]. iOS only.
+  final double? labelSpacing;
+
   /// Whether the tab bar automatically hides itself while a modal/sheet is
   /// presented over its route.
   ///
@@ -318,6 +333,7 @@ class _CNTabBarState extends State<CNTabBar> {
   double? _lastIconSize;
   String? _lastLabelFontFamily;
   double? _lastLabelFontSize;
+  double? _lastLabelSpacing;
 
   // Search state
   bool _isSearchActive = false;
@@ -766,6 +782,7 @@ class _CNTabBarState extends State<CNTabBar> {
       'rightCount': widget.rightCount,
       'rightCircular': widget.circularRightItem,
       'splitSpacing': widget.splitSpacing,
+      if (widget.labelSpacing != null) 'labelSpacing': widget.labelSpacing,
       'style': capturedStyle
         ..addAll({
           if (capturedBackgroundColor != null)
@@ -902,6 +919,7 @@ class _CNTabBarState extends State<CNTabBar> {
     _lastSplitSpacing = widget.splitSpacing;
     _lastLabelFontFamily = widget.labelFontFamily;
     _lastLabelFontSize = widget.labelFontSize;
+    _lastLabelSpacing = widget.labelSpacing;
 
     // Force refresh for label rendering (Issue #6: sporadic missing
     // labels with 5 items). The Swift-side `refresh` cycles
@@ -1129,18 +1147,21 @@ class _CNTabBarState extends State<CNTabBar> {
       if (_lastSplit != widget.split ||
           _lastRightCount != widget.rightCount ||
           _lastCircularRightItem != widget.circularRightItem ||
-          _lastSplitSpacing != widget.splitSpacing) {
+          _lastSplitSpacing != widget.splitSpacing ||
+          _lastLabelSpacing != widget.labelSpacing) {
         await ch.invokeMethod('setLayout', {
           'split': widget.split,
           'rightCount': widget.rightCount,
           'rightCircular': widget.circularRightItem,
           'splitSpacing': widget.splitSpacing,
+          if (widget.labelSpacing != null) 'labelSpacing': widget.labelSpacing,
           'selectedIndex': widget.currentIndex,
         });
         _lastSplit = widget.split;
         _lastRightCount = widget.rightCount;
         _lastCircularRightItem = widget.circularRightItem;
         _lastSplitSpacing = widget.splitSpacing;
+        _lastLabelSpacing = widget.labelSpacing;
         _requestIntrinsicSize();
       }
     } catch (e) {

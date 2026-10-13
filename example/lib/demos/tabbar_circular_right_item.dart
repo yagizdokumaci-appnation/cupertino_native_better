@@ -19,6 +19,7 @@ class _TabBarCircularRightItemDemoPageState
   int _index = 0;
   int _scanTaps = 0;
   bool _circular = true;
+  double _labelSpacing = 0;
 
   void _onTap(int i) {
     setState(() {
@@ -59,6 +60,17 @@ class _TabBarCircularRightItemDemoPageState
                         ),
                       ],
                     ),
+                    const SizedBox(height: 16),
+                    Text('labelSpacing: ${_labelSpacing.toStringAsFixed(0)}'),
+                    SizedBox(
+                      width: 240,
+                      child: CupertinoSlider(
+                        value: _labelSpacing,
+                        max: 6,
+                        divisions: 6,
+                        onChanged: (v) => setState(() => _labelSpacing = v),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -75,6 +87,7 @@ class _TabBarCircularRightItemDemoPageState
                 onTap: _onTap,
                 split: true,
                 circularRightItem: _circular,
+                labelSpacing: _labelSpacing == 0 ? null : _labelSpacing,
               ),
             ),
           ],
