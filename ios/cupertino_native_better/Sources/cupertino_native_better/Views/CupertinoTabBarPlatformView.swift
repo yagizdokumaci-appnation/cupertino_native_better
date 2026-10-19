@@ -1132,9 +1132,9 @@ channel.setMethodCallHandler { [weak self] call, result in
   /// Applies the current label font to a UITabBarAppearance.
   @available(iOS 13.0, *)
   private func applyLabelFont(to ap: UITabBarAppearance) {
-    guard let fontFamily = labelFontFamily, !fontFamily.isEmpty else { return }
+    guard labelFontFamily != nil || labelFontSize > 0 else { return }
     let size = labelFontSize > 0 ? labelFontSize : 10.0
-    let font = UIFont(name: fontFamily, size: size) ?? UIFont.systemFont(ofSize: size)
+    let font = labelFontFamily.flatMap { UIFont(name: $0, size: size) } ?? UIFont.systemFont(ofSize: size)
     let attrs: [NSAttributedString.Key: Any] = [.font: font]
     ap.stackedLayoutAppearance.normal.titleTextAttributes = attrs
     ap.stackedLayoutAppearance.selected.titleTextAttributes = attrs

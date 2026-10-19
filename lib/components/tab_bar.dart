@@ -245,8 +245,8 @@ class CNTabBar extends StatefulWidget {
 
   /// Optional font size for tab bar item labels.
   ///
-  /// Used together with [labelFontFamily]. When null, the system default size
-  /// is used (approximately 10pt on iOS).
+  /// Applies to [labelFontFamily] when set, otherwise to the system font. When
+  /// null, the system default size is used (approximately 10pt on iOS).
   final double? labelFontSize;
 
   /// Optional extra gap, in points, between each item's icon and its label.
