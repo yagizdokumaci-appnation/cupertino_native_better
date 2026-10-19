@@ -939,8 +939,8 @@ channel.setMethodCallHandler { [weak self] call, result in
       case "setFont":
         // Update label font and re-apply appearance to all tab bars
         if let args = call.arguments as? [String: Any] {
-          if let ff = args["labelFontFamily"] as? String { self.labelFontFamily = ff.isEmpty ? nil : ff }
-          if let fs = args["labelFontSize"] as? NSNumber, fs.doubleValue > 0 { self.labelFontSize = CGFloat(truncating: fs) }
+          self.labelFontFamily = (args["labelFontFamily"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+          self.labelFontSize = (args["labelFontSize"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
           if #available(iOS 13.0, *) {
             let ap = self.makeAppearance()
             if let bar = self.tabBar {
