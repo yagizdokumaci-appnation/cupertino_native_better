@@ -1134,14 +1134,14 @@ channel.setMethodCallHandler { [weak self] call, result in
   private func applyLabelFont(to ap: UITabBarAppearance) {
     guard labelFontFamily != nil || labelFontSize > 0 else { return }
     let size = labelFontSize > 0 ? labelFontSize : 10.0
-    let font = labelFontFamily.flatMap { UIFont(name: $0, size: size) } ?? UIFont.systemFont(ofSize: size)
-    let attrs: [NSAttributedString.Key: Any] = [.font: font]
-    ap.stackedLayoutAppearance.normal.titleTextAttributes = attrs
-    ap.stackedLayoutAppearance.selected.titleTextAttributes = attrs
-    ap.inlineLayoutAppearance.normal.titleTextAttributes = attrs
-    ap.inlineLayoutAppearance.selected.titleTextAttributes = attrs
-    ap.compactInlineLayoutAppearance.normal.titleTextAttributes = attrs
-    ap.compactInlineLayoutAppearance.selected.titleTextAttributes = attrs
+    let custom = labelFontFamily.flatMap { UIFont(name: $0, size: size) }
+    // The iOS 26 default label is SF Medium, and SF Semibold inside the selection pill.
+    let normal: [NSAttributedString.Key: Any] = [.font: custom ?? UIFont.systemFont(ofSize: size, weight: .medium)]
+    let selected: [NSAttributedString.Key: Any] = [.font: custom ?? UIFont.systemFont(ofSize: size, weight: .semibold)]
+    for layout in [ap.stackedLayoutAppearance, ap.inlineLayoutAppearance, ap.compactInlineLayoutAppearance] {
+      layout.normal.titleTextAttributes = normal
+      layout.selected.titleTextAttributes = selected
+    }
   }
 
   func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
