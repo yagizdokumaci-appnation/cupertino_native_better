@@ -939,8 +939,8 @@ channel.setMethodCallHandler { [weak self] call, result in
       case "setFont":
         // Update label font and re-apply appearance to all tab bars
         if let args = call.arguments as? [String: Any] {
-          if let ff = args["labelFontFamily"] as? String { self.labelFontFamily = ff.isEmpty ? nil : ff }
-          if let fs = args["labelFontSize"] as? NSNumber, fs.doubleValue > 0 { self.labelFontSize = CGFloat(truncating: fs) }
+          self.labelFontFamily = (args["labelFontFamily"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+          self.labelFontSize = (args["labelFontSize"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
           if #available(iOS 13.0, *) {
             let ap = self.makeAppearance()
             if let bar = self.tabBar {
@@ -1132,16 +1132,16 @@ channel.setMethodCallHandler { [weak self] call, result in
   /// Applies the current label font to a UITabBarAppearance.
   @available(iOS 13.0, *)
   private func applyLabelFont(to ap: UITabBarAppearance) {
-    guard let fontFamily = labelFontFamily, !fontFamily.isEmpty else { return }
+    guard labelFontFamily != nil || labelFontSize > 0 else { return }
     let size = labelFontSize > 0 ? labelFontSize : 10.0
-    let font = UIFont(name: fontFamily, size: size) ?? UIFont.systemFont(ofSize: size)
-    let attrs: [NSAttributedString.Key: Any] = [.font: font]
-    ap.stackedLayoutAppearance.normal.titleTextAttributes = attrs
-    ap.stackedLayoutAppearance.selected.titleTextAttributes = attrs
-    ap.inlineLayoutAppearance.normal.titleTextAttributes = attrs
-    ap.inlineLayoutAppearance.selected.titleTextAttributes = attrs
-    ap.compactInlineLayoutAppearance.normal.titleTextAttributes = attrs
-    ap.compactInlineLayoutAppearance.selected.titleTextAttributes = attrs
+    let custom = labelFontFamily.flatMap { UIFont(name: $0, size: size) }
+    // The iOS 26 default label is SF Medium, and SF Semibold inside the selection pill.
+    let normal: [NSAttributedString.Key: Any] = [.font: custom ?? UIFont.systemFont(ofSize: size, weight: .medium)]
+    let selected: [NSAttributedString.Key: Any] = [.font: custom ?? UIFont.systemFont(ofSize: size, weight: .semibold)]
+    for layout in [ap.stackedLayoutAppearance, ap.inlineLayoutAppearance, ap.compactInlineLayoutAppearance] {
+      layout.normal.titleTextAttributes = normal
+      layout.selected.titleTextAttributes = selected
+    }
   }
 
   func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
