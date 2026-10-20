@@ -312,9 +312,45 @@ class CNTabBar extends StatefulWidget {
   /// the tab bar.
   final bool autoHideOnPageTransition;
 
+  /// Renders the custom icons of [items] ahead of the bar's first mount.
+  ///
+  /// Pass the same [items] and [iconSize] as the bar, so its first build
+  /// reads the rendered icons from cache instead of rasterising them.
+  static Future<void> precacheIcons(
+    List<CNTabBarItem> items, {
+    double? iconSize,
+  }) async {
+    final renders = <Future<Uint8List?>>[];
+    for (final item in items) {
+      if (item.imageAsset == null && item.customIcon != null) {
+        renders.add(
+          iconDataToImageBytes(
+            item.customIcon!,
+            size: _customIconSize(item, iconSize),
+          ),
+        );
+      }
+      if (item.activeImageAsset == null && item.activeCustomIcon != null) {
+        renders.add(
+          iconDataToImageBytes(
+            item.activeCustomIcon!,
+            size: _activeCustomIconSize(item, iconSize),
+          ),
+        );
+      }
+    }
+    await Future.wait(renders);
+  }
+
   @override
   State<CNTabBar> createState() => _CNTabBarState();
 }
+
+double _customIconSize(CNTabBarItem item, double? iconSize) =>
+    iconSize ?? item.icon?.size ?? 25.0;
+
+double _activeCustomIconSize(CNTabBarItem item, double? iconSize) =>
+    iconSize ?? item.activeIcon?.size ?? item.icon?.size ?? 25.0;
 
 class _CNTabBarState extends State<CNTabBar> {
   MethodChannel? _channel;
@@ -650,7 +686,7 @@ class _CNTabBarState extends State<CNTabBar> {
         // be produced at the target logical size.
         final bytes = await iconDataToImageBytes(
           item.customIcon!,
-          size: widget.iconSize ?? item.icon?.size ?? 25.0,
+          size: _customIconSize(item, widget.iconSize),
         );
         customIconBytes.add(bytes);
       } else {
@@ -664,11 +700,7 @@ class _CNTabBarState extends State<CNTabBar> {
       } else if (item.activeCustomIcon != null) {
         final bytes = await iconDataToImageBytes(
           item.activeCustomIcon!,
-          size:
-              widget.iconSize ??
-              item.activeIcon?.size ??
-              item.icon?.size ??
-              25.0,
+          size: _activeCustomIconSize(item, widget.iconSize),
         );
         activeCustomIconBytes.add(bytes);
       } else if (item.customIcon != null) {
