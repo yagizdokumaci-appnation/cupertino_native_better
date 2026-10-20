@@ -224,12 +224,20 @@ class CNAlert {
   /// [CNAlertAction.isCancel] (a hard `NSInternalInconsistencyException`), two
   /// with [CNAlertAction.isDefault], and a single action that is both cancel
   /// and destructive.
+  ///
+  /// [forceVerticalActions] stacks exactly two buttons vertically even when
+  /// both labels are short enough to sit side by side. UIKit exposes no layout
+  /// axis, so the native side pads the end of each label with no-break spaces
+  /// until UIKit stops fitting them in one row; VoiceOver still reads the
+  /// plain label. iOS 26 and later only: earlier iOS keeps UIKit's own layout,
+  /// and the Flutter fallback ignores it.
   static Future<CNAlertResult<T>?> show<T>({
     required BuildContext context,
     required List<CNAlertAction<T>> actions,
     String? title,
     String? message,
     List<CNAlertTextField> textFields = const <CNAlertTextField>[],
+    bool forceVerticalActions = false,
   }) {
     assert(
       actions.isNotEmpty,
@@ -284,6 +292,7 @@ class CNAlert {
       message: message,
       textFields: textFields,
       isDark: ThemeHelper.isDark(context),
+      forceVerticalActions: forceVerticalActions,
     );
   }
 
@@ -293,6 +302,7 @@ class CNAlert {
     required String? message,
     required List<CNAlertTextField> textFields,
     required bool isDark,
+    required bool forceVerticalActions,
   }) async {
     final payload = debugBuildAlertPayload(
       actions: actions,
@@ -300,6 +310,7 @@ class CNAlert {
       message: message,
       textFields: textFields,
       isDark: isDark,
+      forceVerticalActions: forceVerticalActions,
     );
 
     try {
@@ -459,11 +470,13 @@ Map<String, Object?> debugBuildAlertPayload({
   String? message,
   List<CNAlertTextField> textFields = const <CNAlertTextField>[],
   bool isDark = false,
+  bool forceVerticalActions = false,
 }) {
   return <String, Object?>{
     'title': title,
     'message': message,
     'isDark': isDark,
+    'forceVerticalActions': forceVerticalActions,
     'actions': [
       for (final action in actions)
         <String, Object?>{

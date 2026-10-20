@@ -48,6 +48,7 @@ void main() {
           CNActionSheetAction<String>(
             label: 'Duplicate',
             value: 'dup',
+            isDefault: true,
             enabled: false,
           ),
         ],
@@ -59,8 +60,18 @@ void main() {
       expect(payload['cancelLabel'], 'Cancel');
       expect(payload.containsKey('anchorRect'), false);
       expect(payload['actions'], <Map<String, Object?>>[
-        {'label': 'Delete', 'destructive': true, 'enabled': true},
-        {'label': 'Duplicate', 'destructive': false, 'enabled': false},
+        {
+          'label': 'Delete',
+          'destructive': true,
+          'enabled': true,
+          'preferred': false,
+        },
+        {
+          'label': 'Duplicate',
+          'destructive': false,
+          'enabled': false,
+          'preferred': true,
+        },
       ]);
     });
 
@@ -79,6 +90,16 @@ void main() {
       expect(payload['title'], isNull);
       expect(payload['message'], isNull);
       expect(payload['cancelLabel'], isNull);
+      expect(payload['forceVerticalActions'], false);
+    });
+
+    test('encodes forceVerticalActions', () {
+      final payload = debugBuildActionSheetPayload(
+        actions: const [CNActionSheetAction<String>(label: 'Only', value: 'a')],
+        forceVerticalActions: true,
+      );
+
+      expect(payload['forceVerticalActions'], true);
     });
   });
 

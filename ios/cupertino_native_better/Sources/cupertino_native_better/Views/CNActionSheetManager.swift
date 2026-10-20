@@ -95,19 +95,26 @@ final class CNActionSheetManager: NSObject {
                                       message: config.message,
                                       preferredStyle: .actionSheet)
 
+        let padded = CNVerticalActions.applies(
+            requested: config.forceVerticalActions,
+            buttonCount: config.actions.count + (config.cancelLabel == nil ? 0 : 1)
+        )
+
         for (index, entry) in config.actions.enumerated() {
             let action = UIAlertAction(
-                title: entry.label,
+                cnTitle: entry.label,
+                padded: padded,
                 style: entry.destructive ? .destructive : .default
             ) { [weak self, weak alert] _ in
                 self?.send(index, from: alert)
             }
             action.isEnabled = entry.enabled
             alert.addAction(action)
+            if entry.preferred { alert.preferredAction = action }
         }
 
         if let cancelLabel = config.cancelLabel {
-            alert.addAction(UIAlertAction(title: cancelLabel, style: .cancel) { [weak self, weak alert] _ in
+            alert.addAction(UIAlertAction(cnTitle: cancelLabel, padded: padded, style: .cancel) { [weak self, weak alert] _ in
                 self?.send(nil, from: alert)
             })
         }
@@ -115,8 +122,16 @@ final class CNActionSheetManager: NSObject {
         applyAnchor(config.anchorRect, to: alert, in: window, presenter: presenter)
 
         // Catches a dismissal that fires no action handler — tapping outside an
-        // anchored popover, or a swipe-down.
-        alert.presentationController?.delegate = self
+        // anchored popover, or a swipe-down. Below iOS 26 a compact-width
+        // sheet presents through the alert presentation controller, which
+        // raises NSInternalInconsistencyException on any delegate assignment.
+        // Nothing is lost there: an outside tap runs the cancel handler, and
+        // without a cancel action it does nothing.
+        if #available(iOS 26.0, *) {
+            alert.presentationController?.delegate = self
+        } else if needsSyntheticSource(in: window) {
+            alert.presentationController?.delegate = self
+        }
 
         presentedAlert = alert
         presenter.present(alert, animated: true)
@@ -237,6 +252,7 @@ final class CNActionSheetManager: NSObject {
             let label: String
             let destructive: Bool
             let enabled: Bool
+            let preferred: Bool
         }
 
         let title: String?
@@ -244,17 +260,20 @@ final class CNActionSheetManager: NSObject {
         let cancelLabel: String?
         let actions: [Action]
         let anchorRect: CGRect?
+        let forceVerticalActions: Bool
 
         init(args: [String: Any]) {
             title = args["title"] as? String
             message = args["message"] as? String
             cancelLabel = args["cancelLabel"] as? String
+            forceVerticalActions = args["forceVerticalActions"] as? Bool ?? false
 
             let raw = args["actions"] as? [[String: Any]] ?? []
             actions = raw.map { entry in
                 Action(label: entry["label"] as? String ?? "",
                        destructive: entry["destructive"] as? Bool ?? false,
-                       enabled: entry["enabled"] as? Bool ?? true)
+                       enabled: entry["enabled"] as? Bool ?? true,
+                       preferred: entry["preferred"] as? Bool ?? false)
             }
 
             if let rect = args["anchorRect"] as? [String: Any],
