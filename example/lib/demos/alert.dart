@@ -86,6 +86,20 @@ class _AlertDemoPageState extends State<AlertDemoPage> {
     );
   }
 
+  Future<void> _showTwoButtonVertical() async {
+    _record(
+      await CNAlert.show<String>(
+        context: context,
+        title: 'Turn on notifications?',
+        actions: const [
+          CNAlertAction(label: 'Not now', value: 'later', isCancel: true),
+          CNAlertAction(label: 'Allow', value: 'allow', isDefault: true),
+        ],
+        forceVerticalActions: true,
+      ),
+    );
+  }
+
   Future<void> _showDestructive() async {
     _record(
       await CNAlert.show<String>(
@@ -271,6 +285,7 @@ class _AlertDemoPageState extends State<AlertDemoPage> {
             const SizedBox(height: 24),
 
             _trigger('Two buttons + default', _showTwoButton),
+            _trigger('Two buttons, vertical (iOS 26)', _showTwoButtonVertical),
             _trigger('Destructive + cancel', _showDestructive),
             _trigger('Three buttons (stacked)', _showThreeButton),
             _trigger('Title only', _showTitleOnly),

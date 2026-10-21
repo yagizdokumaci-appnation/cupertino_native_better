@@ -159,13 +159,16 @@ final class CNAlertManager: NSObject {
         // builds and this payload is untrusted. Demote rather than drop, so a
         // removed button cannot leave the alert without a way out.
         var cancelUsed = false
+        let padded = CNVerticalActions.applies(requested: config.forceVerticalActions,
+                                               buttonCount: config.actions.count)
         for (index, entry) in config.actions.enumerated() {
             var style = entry.style
             if style == .cancel {
                 if cancelUsed { style = .default } else { cancelUsed = true }
             }
             let action = UIAlertAction(
-                title: entry.label,
+                cnTitle: entry.label,
+                padded: padded,
                 style: style
             ) { [weak self, weak alert] _ in
                 // Read the text while the controller is still alive —
@@ -261,6 +264,7 @@ final class CNAlertManager: NSObject {
         let title: String?
         let message: String?
         let isDark: Bool?
+        let forceVerticalActions: Bool
         let actions: [Action]
         let textFields: [TextField]
 
@@ -268,6 +272,7 @@ final class CNAlertManager: NSObject {
             title = args["title"] as? String
             message = args["message"] as? String
             isDark = args["isDark"] as? Bool
+            forceVerticalActions = args["forceVerticalActions"] as? Bool ?? false
 
             let rawActions = args["actions"] as? [[String: Any]] ?? []
             actions = rawActions.map { entry in

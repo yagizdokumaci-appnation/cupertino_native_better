@@ -92,6 +92,16 @@ void main() {
       expect(payload['textFields'], isEmpty);
       expect(payload['title'], isNull);
       expect(payload['message'], isNull);
+      expect(payload['forceVerticalActions'], false);
+    });
+
+    test('encodes forceVerticalActions', () {
+      final payload = debugBuildAlertPayload(
+        actions: const [CNAlertAction<String>(label: 'OK', value: 'ok')],
+        forceVerticalActions: true,
+      );
+
+      expect(payload['forceVerticalActions'], true);
     });
 
     test('encodes text fields in order', () {

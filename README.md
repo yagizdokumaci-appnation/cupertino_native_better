@@ -715,6 +715,14 @@ if (choice == 'delete') _deletePhoto();
 `show` resolves to the selected action's `value`, or `null` when the sheet is
 cancelled or dismissed.
 
+Two options apply on iOS 26 and later only; earlier iOS and the fallback ignore
+them:
+
+- `isDefault: true` on at most one action draws it as a filled button
+  (`preferredAction`).
+- `forceVerticalActions: true` stacks a two-button sheet (one action plus
+  cancel, or two actions) even when both labels would fit side by side.
+
 #### Anchoring — read this before shipping
 
 Starting in iOS 26 an action sheet anchors to the view it came from **on iPhone
@@ -820,6 +828,9 @@ second `CNAlert.show` replaced this alert. Things to know:
   without presenting in release.
 - At most one action may be `isCancel` and at most one `isDefault`; UIKit
   cannot render more.
+- `forceVerticalActions: true` stacks a two-button alert even when both labels
+  would fit side by side. iOS 26 and later only; earlier iOS and the fallback
+  ignore it.
 - `UIAlertController` has no public API for custom content or action icons,
   so `CNAlert` offers neither.
 
