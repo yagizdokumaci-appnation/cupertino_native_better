@@ -74,9 +74,10 @@ final class CNActionSheetManager: NSObject {
 
         // A sheet already on screen means the previous caller is still waiting.
         // Take that sheet down first, so its actions can no longer fire, then
-        // answer the call it belonged to.
+        // answer the call it belonged to. The stale delegate stays attached:
+        // clearing it throws below iOS 26 (see the delegate assignment
+        // further down), and its callbacks no longer match `presentedAlert`.
         if let stale = presentedAlert {
-            stale.presentationController?.delegate = nil
             stale.dismiss(animated: false)
             presentedAlert = nil
         }

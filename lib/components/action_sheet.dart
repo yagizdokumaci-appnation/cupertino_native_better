@@ -54,7 +54,9 @@ class CNActionSheetAction<T> {
   /// destructive action first yourself.
   final bool isDestructive;
 
-  /// Marks the action as the preferred one (`UIAlertController.preferredAction`).
+  /// Marks the action as the preferred one (`UIAlertController.preferredAction`),
+  /// which iOS 26 draws as a filled button. UIKit documents `preferredAction`
+  /// as alert-only: earlier iOS and the Flutter fallback ignore it.
   final bool isDefault;
 
   /// Whether the action can be selected. A disabled action renders greyed out
@@ -158,6 +160,11 @@ class CNActionSheet {
       cancelLabel != null || actions.any((a) => a.enabled),
       'CNActionSheet.show needs a cancelLabel or at least one enabled action: '
       'a sheet with neither has nothing to press and never resolves.',
+    );
+    assert(
+      actions.where((a) => a.isDefault).length <= 1,
+      'CNActionSheet.show accepts at most one action with isDefault: '
+      'UIAlertController.preferredAction holds a single action.',
     );
     // `actions` is often built from a collection that can come out empty, and
     // `enabled` is often computed per action from one flag that can be false

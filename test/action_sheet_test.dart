@@ -209,6 +209,34 @@ void main() {
         expect(calls, isEmpty);
       });
     });
+
+    testWidgets('refuses two default actions', (tester) async {
+      mockChannel((call) async => null);
+
+      await _withPlatform(TargetPlatform.iOS, () async {
+        final context = await _pumpContext(tester);
+
+        expect(
+          () => CNActionSheet.show<String>(
+            context: context,
+            actions: const [
+              CNActionSheetAction<String>(
+                label: 'Save',
+                value: 'a',
+                isDefault: true,
+              ),
+              CNActionSheetAction<String>(
+                label: 'Keep',
+                value: 'b',
+                isDefault: true,
+              ),
+            ],
+          ),
+          throwsAssertionError,
+        );
+      });
+    });
+
     testWidgets('refuses a sheet whose actions are all disabled and has no '
         'cancel', (tester) async {
       final calls = <MethodCall>[];
