@@ -245,8 +245,11 @@ class CNTabBar extends StatefulWidget {
 
   /// Optional font size for tab bar item labels.
   ///
-  /// Applies to [labelFontFamily] when set, otherwise to the system font. When
-  /// null, the system default size is used (approximately 10pt on iOS).
+  /// On the iOS 26 native bar it applies to [labelFontFamily] when set,
+  /// otherwise to the system font. The Flutter fallback applies it only
+  /// together with [labelFontFamily], and the native bar ignores both when
+  /// [searchItem] is set. When null, the system default size is used
+  /// (approximately 10pt on iOS).
   final double? labelFontSize;
 
   /// Optional extra gap, in points, between each item's icon and its label.
