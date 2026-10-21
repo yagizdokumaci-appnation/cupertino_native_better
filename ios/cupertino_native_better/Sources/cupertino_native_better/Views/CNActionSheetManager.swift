@@ -123,14 +123,16 @@ final class CNActionSheetManager: NSObject {
         applyAnchor(config.anchorRect, to: alert, in: window, presenter: presenter)
 
         // Catches a dismissal that fires no action handler — tapping outside an
-        // anchored popover, or a swipe-down. Below iOS 26 a compact-width
-        // sheet presents through the alert presentation controller, which
-        // raises NSInternalInconsistencyException on any delegate assignment.
-        // Nothing is lost there: an outside tap runs the cancel handler, and
-        // without a cancel action it does nothing.
+        // anchored popover, or a swipe-down. Below iOS 26 an iPhone sheet
+        // presents through the alert presentation controller, which raises
+        // NSInternalInconsistencyException on any delegate assignment. That
+        // holds in a regular-width landscape window too, so the gate is the
+        // controller's type, not the size class. Nothing is lost there: an
+        // outside tap runs the cancel handler, and without a cancel action it
+        // does nothing.
         if #available(iOS 26.0, *) {
             alert.presentationController?.delegate = self
-        } else if needsSyntheticSource(in: window) {
+        } else if alert.presentationController is UIPopoverPresentationController {
             alert.presentationController?.delegate = self
         }
 
