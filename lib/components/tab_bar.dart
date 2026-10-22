@@ -647,6 +647,9 @@ class _CNTabBarState extends State<CNTabBar> {
     if (_creationParams!['selectedIndex'] != widget.currentIndex) {
       _creationParams!['selectedIndex'] = widget.currentIndex;
     }
+    _creationParams!['split'] = _hasSearch ? true : widget.split;
+    _creationParams!['rightCount'] = widget.rightCount;
+    _creationParams!['splitSpacing'] = widget.splitSpacing;
     _creationParams!['rightCircular'] = widget.circularRightItem;
     if (widget.labelSpacing != null) {
       _creationParams!['labelSpacing'] = widget.labelSpacing;
