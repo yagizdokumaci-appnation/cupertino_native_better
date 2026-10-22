@@ -396,6 +396,7 @@ class _CNTabBarState extends State<CNTabBar> {
   // platform view for a SizedBox during forward/reverse status makes the
   // page Flutter-only for the slide, eliminating the artifact.
   bool _pageTransitioning = false;
+  bool _labelRefreshPending = false;
   Animation<double>? _secondaryRouteAnim;
 
   bool get _isDark => ThemeHelper.isDark(context);
@@ -461,6 +462,7 @@ class _CNTabBarState extends State<CNTabBar> {
     if (isAnimating != _pageTransitioning && mounted) {
       setState(() => _pageTransitioning = isAnimating);
     }
+    if (!isAnimating) _flushLabelRefresh();
   }
 
   void _attachSecondaryRouteAnim() {
@@ -495,6 +497,7 @@ class _CNTabBarState extends State<CNTabBar> {
         if (_pageTransitioning) {
           _pageTransitioning = false;
         }
+        _flushLabelRefresh();
       }
     }
     _syncPropsToNativeIfNeeded();
@@ -987,8 +990,21 @@ class _CNTabBarState extends State<CNTabBar> {
     // restore would override our intended index, leaving the bar stuck
     // at the stale creationParams selectedIndex = 0 (see auto-hide-on-
     // modal recreation flow).
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      Future.delayed(const Duration(milliseconds: 50), () async {
+    //
+    // A view recreated while a sheet closes over a PageRoute host sits in
+    // the unpainted IndexedStack slot with a zero frame, so refreshing now
+    // lays labels out truncated ("Ho…"). Defer until it is painted.
+    if (_pageTransitioning) {
+      _labelRefreshPending = true;
+    } else {
+      _scheduleLabelRefresh();
+    }
+  }
+
+  void _scheduleLabelRefresh() {
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    for (final delay in const [50, 200]) {
+      Future.delayed(Duration(milliseconds: delay), () async {
         if (mounted && _channel != null) {
           try {
             await _channel?.invokeMethod('setSelectedIndex', {
@@ -1000,19 +1016,13 @@ class _CNTabBarState extends State<CNTabBar> {
           }
         }
       });
-      Future.delayed(const Duration(milliseconds: 200), () async {
-        if (mounted && _channel != null) {
-          try {
-            await _channel?.invokeMethod('setSelectedIndex', {
-              'index': widget.currentIndex,
-            });
-            await _channel?.invokeMethod('refresh');
-          } catch (e) {
-            // Ignore when platform view is being recreated
-          }
-        }
-      });
     }
+  }
+
+  void _flushLabelRefresh() {
+    if (!_labelRefreshPending) return;
+    _labelRefreshPending = false;
+    _scheduleLabelRefresh();
   }
 
   Future<dynamic> _onMethodCall(MethodCall call) async {
