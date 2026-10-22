@@ -89,4 +89,88 @@ void main() {
     },
     skip: !PlatformVersion.shouldUseNativeGlass,
   );
+
+  testWidgets(
+    'CNTabBar recreated after a sheet pushes props changed since first mount',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final messenger = tester.binding.defaultBinaryMessenger;
+      final calls = <MethodCall>[];
+
+      messenger.setMockMethodCallHandler(
+        SystemChannels.platform_views,
+        (call) async {
+          calls.add(call);
+          return null;
+        },
+      );
+      for (var id = 0; id < 20; id++) {
+        messenger.setMockMethodCallHandler(
+          MethodChannel('CupertinoNativeTabBar_$id'),
+          (call) async {
+            calls.add(call);
+            if (call.method == 'getIntrinsicSize') {
+              return {'width': 400.0, 'height': 63.0};
+            }
+            return null;
+          },
+        );
+      }
+
+      final badge = ValueNotifier<String?>(null);
+      final navKey = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        WidgetsApp(
+          navigatorKey: navKey,
+          color: const Color(0xFFFFFFFF),
+          navigatorObservers: [CNTabBarRouteObserver()],
+          onGenerateRoute: (_) => PageRouteBuilder<void>(
+            pageBuilder: (_, _, _) => Align(
+              alignment: Alignment.bottomCenter,
+              child: ValueListenableBuilder<String?>(
+                valueListenable: badge,
+                builder: (_, value, _) => CNTabBar(
+                  items: [
+                    CNTabBarItem(
+                      label: 'Home',
+                      icon: const CNSymbol('house'),
+                      badge: value,
+                    ),
+                    const CNTabBarItem(
+                      label: 'Profile',
+                      icon: CNSymbol('person'),
+                    ),
+                  ],
+                  currentIndex: 0,
+                  onTap: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 600));
+
+      badge.value = '3';
+      await tester.pump(const Duration(milliseconds: 300));
+
+      navKey.currentState!.push(_TestSheetRoute());
+      await tester.pumpAndSettle();
+      navKey.currentState!.pop();
+      await tester.pumpAndSettle();
+
+      final lastCreate = calls.lastIndexWhere((c) => c.method == 'create');
+      final pushedBadges = calls
+          .skip(lastCreate + 1)
+          .where((c) => c.method == 'setBadges' || c.method == 'setItems')
+          .map((c) => (c.arguments as Map)['badges']);
+      expect(pushedBadges, contains(equals(['3', ''])));
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 300));
+      debugDefaultTargetPlatformOverride = null;
+    },
+    skip: !PlatformVersion.shouldUseNativeGlass,
+  );
 }

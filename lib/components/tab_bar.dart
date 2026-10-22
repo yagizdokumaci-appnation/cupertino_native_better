@@ -960,17 +960,28 @@ class _CNTabBarState extends State<CNTabBar> {
     _channel = ch;
     ch.setMethodCallHandler(_onMethodCall);
     _lastIndex = widget.currentIndex;
-    _lastTint = resolveColorToArgb(_effectiveTint, context);
-    _lastBg = resolveColorToArgb(widget.backgroundColor, context);
-    _lastIsDark = _isDark;
+    // The native view was built from _creationParams, which is cached from
+    // the first mount. Seed the diff state from it (not from the current
+    // widget) so props changed since then — a badge, a label, the theme —
+    // are pushed to a view recreated after a modal closes.
+    final params = _creationParams!;
+    final style = params['style'] as Map<String, dynamic>;
+    _lastTint = style['tint'] as int?;
+    _lastBg = style['backgroundColor'] as int?;
+    _lastIsDark = params['isDark'] as bool?;
     _requestIntrinsicSize();
-    _cacheItems();
+    _lastLabels = params['labels'] as List<String>;
+    _lastSymbols = params['sfSymbols'] as List<String>;
+    _lastActiveSymbols = params['activeSfSymbols'] as List<String>;
+    _lastBadges = params['badges'] as List<String>;
     _lastSplit = widget.split;
     _lastRightCount = widget.rightCount;
     _lastCircularRightItem = widget.circularRightItem;
     _lastSplitSpacing = widget.splitSpacing;
-    _lastLabelFontFamily = widget.labelFontFamily;
-    _lastLabelFontSize = widget.labelFontSize;
+    _lastLabelFontFamily = params['labelFontFamily'] as String?;
+    _lastLabelFontSize = params['labelFontSize'] as double?;
+    _syncBrightnessIfNeeded();
+    _syncPropsToNativeIfNeeded();
     _lastLabelSpacing = widget.labelSpacing;
 
     // Force refresh for label rendering (Issue #6: sporadic missing
@@ -1248,16 +1259,6 @@ class _CNTabBarState extends State<CNTabBar> {
         // Ignore MissingPluginException during hot reload or view recreation
       }
     }
-  }
-
-  void _cacheItems() {
-    _lastLabels = widget.items.map((e) => e.label ?? '').toList();
-    _lastSymbols = widget.items.map((e) => e.icon?.name ?? '').toList();
-    _lastActiveSymbols = widget.items
-        .map((e) => e.activeIcon?.name ?? e.icon?.name ?? '')
-        .toList();
-    _lastBadges = widget.items.map((e) => e.badge ?? '').toList();
-    // Note: Custom icon bytes are cached in _syncPropsToNativeIfNeeded when rendered
   }
 
   Future<void> _requestIntrinsicSize() async {
