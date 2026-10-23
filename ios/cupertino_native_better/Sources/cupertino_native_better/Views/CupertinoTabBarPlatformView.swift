@@ -2,9 +2,19 @@ import Flutter
 import UIKit
 import SVGKit
 
+private final class TabBarContainerView: UIView {
+  var onLayout: (() -> Void)?
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    onLayout?()
+  }
+}
+
 class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelegate {
   private let channel: FlutterMethodChannel
-  private let container: UIView
+  private let container: TabBarContainerView
+  private var labelLayoutWidth: CGFloat = 0
   private var tabBar: UITabBar?
   private var tabBarLeft: UITabBar?
   private var tabBarRight: UITabBar?
@@ -38,7 +48,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
 
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {
     self.channel = FlutterMethodChannel(name: "CupertinoNativeTabBar_\(viewId)", binaryMessenger: messenger)
-    self.container = UIView(frame: frame)
+    self.container = TabBarContainerView(frame: frame)
 
     var labels: [String] = []
     var symbols: [String] = []
@@ -113,6 +123,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
 
     super.init()
 
+    container.onLayout = { [weak self] in self?.relayoutLabelsIfWidthChanged() }
     container.backgroundColor = .clear
     // Always clip the container to block the iOS 26 Liquid Glass drop
     // shadow from bleeding over modals (Issue #2). The Liquid Glass
@@ -1022,6 +1033,27 @@ channel.setMethodCallHandler { [weak self] call, result in
   }
 
   func view() -> UIView { container }
+
+  // iOS 26 sizes item labels at the bar's width when the item views are built
+  // and does not resize them when the bar widens, so a bar first laid out
+  // narrow (before Flutter sizes the platform view) keeps "…" labels.
+  // Rebuilding the item views at the new width resizes them.
+  private func relayoutLabelsIfWidthChanged() {
+    let width = container.bounds.width
+    guard width > 0, abs(width - labelLayoutWidth) > 0.5 else { return }
+    labelLayoutWidth = width
+    UIView.performWithoutAnimation {
+      for bar in [tabBar, tabBarLeft, tabBarRight].compactMap({ $0 }) {
+        guard let items = bar.items, !items.isEmpty else { continue }
+        let selected = bar.selectedItem
+        bar.delegate = nil
+        bar.items = nil
+        bar.items = items
+        bar.selectedItem = selected
+        bar.delegate = self
+      }
+    }
+  }
 
   /// How much a custom label is taller than the native 10pt one. The bar
   /// keeps its height and grows the label up into the icon, so it is split
