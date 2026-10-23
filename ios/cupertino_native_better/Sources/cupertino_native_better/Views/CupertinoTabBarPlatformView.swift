@@ -2,9 +2,19 @@ import Flutter
 import UIKit
 import SVGKit
 
+private final class TabBarContainerView: UIView {
+  var onLayout: (() -> Void)?
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    onLayout?()
+  }
+}
+
 class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelegate {
   private let channel: FlutterMethodChannel
-  private let container: UIView
+  private let container: TabBarContainerView
+  private var labelLayoutWidth: CGFloat = 0
   private var tabBar: UITabBar?
   private var tabBarLeft: UITabBar?
   private var tabBarRight: UITabBar?
@@ -38,7 +48,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
 
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {
     self.channel = FlutterMethodChannel(name: "CupertinoNativeTabBar_\(viewId)", binaryMessenger: messenger)
-    self.container = UIView(frame: frame)
+    self.container = TabBarContainerView(frame: frame)
 
     var labels: [String] = []
     var symbols: [String] = []
@@ -113,6 +123,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
 
     super.init()
 
+    container.onLayout = { [weak self] in self?.relayoutLabelsIfWidthChanged() }
     container.backgroundColor = .clear
     // Always clip the container to block the iOS 26 Liquid Glass drop
     // shadow from bleeding over modals (Issue #2). The Liquid Glass
@@ -976,99 +987,32 @@ channel.setMethodCallHandler { [weak self] call, result in
           result(nil)
         } else { result(FlutterError(code: "bad_args", message: "Missing font args", details: nil)) }
       case "refresh":
-        // Force refresh for label rendering on iOS < 16.
+        // Force refresh for label rendering (Issue #6).
         // UITabBar only fully layouts labels when items are selected,
-        // so we temporarily select each item to force layout. The
-        // entire cycle is wrapped in `UIView.setAnimationsEnabled(false)`
-        // so the iOS 26 Liquid Glass selection pill doesn't morph
-        // visibly through every tab on launch (Issue #35).
-        if let bar = self.tabBar, let items = bar.items, !items.isEmpty {
-          let originalSelected = bar.selectedItem
-          // Temporarily remove delegate to prevent callbacks during refresh
-          bar.delegate = nil
-          DispatchQueue.main.async { [weak self, weak bar, weak originalSelected] in
-            guard let self = self, let bar = bar, let items = bar.items, !items.isEmpty else { return }
-            UIView.setAnimationsEnabled(false)
-            // Cycle through each item to force label layout
-            var index = 0
-            func selectNext() {
-              guard index < items.count else {
-                // Restore original selection
-                if let original = originalSelected {
-                  bar.selectedItem = original
-                } else {
-                  bar.selectedItem = items.first
-                }
+        // so we temporarily select each item to force layout. The whole
+        // cycle runs in one main-queue block: yielding between items let
+        // Core Animation commit each intermediate selection, which showed
+        // as the Liquid Glass pill jumping through every tab on launch.
+        DispatchQueue.main.async { [weak self] in
+          guard let self = self else { return }
+          let bars = [self.tabBar, self.tabBarLeft, self.tabBarRight].compactMap { $0 }
+          UIView.performWithoutAnimation {
+            for bar in bars {
+              guard let items = bar.items, !items.isEmpty else { continue }
+              let original = bar.selectedItem
+              // Temporarily remove delegate to prevent callbacks during refresh
+              bar.delegate = nil
+              for item in items {
+                bar.selectedItem = item
                 bar.setNeedsLayout()
                 bar.layoutIfNeeded()
-                // Restore delegate + animations
-                bar.delegate = self
-                UIView.setAnimationsEnabled(true)
-                return
               }
-              bar.selectedItem = items[index]
+              // A split bar may have no selection; the single bar falls back to its first item.
+              bar.selectedItem = original ?? (bar === self.tabBar ? items.first : nil)
               bar.setNeedsLayout()
               bar.layoutIfNeeded()
-              index += 1
-              DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                selectNext()
-              }
+              bar.delegate = self
             }
-            selectNext()
-          }
-        } else if let left = self.tabBarLeft, let right = self.tabBarRight {
-          let leftOriginal = left.selectedItem
-          let rightOriginal = right.selectedItem
-          // Temporarily remove delegates to prevent callbacks during refresh
-          left.delegate = nil
-          right.delegate = nil
-          DispatchQueue.main.async { [weak self, weak left, weak right, weak leftOriginal, weak rightOriginal] in
-            guard let self = self, let left = left, let right = right,
-                  let leftItems = left.items, let rightItems = right.items else { return }
-            UIView.setAnimationsEnabled(false)
-            // Process left items
-            var leftIndex = 0
-            func selectNextLeft() {
-              if leftIndex < leftItems.count {
-                left.selectedItem = leftItems[leftIndex]
-                left.setNeedsLayout()
-                left.layoutIfNeeded()
-                leftIndex += 1
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                  selectNextLeft()
-                }
-              } else {
-                // Restore original selection (nil means no selection on this bar)
-                left.selectedItem = leftOriginal
-                left.setNeedsLayout()
-                left.layoutIfNeeded()
-
-                // Process right items
-                var rightIndex = 0
-                func selectNextRight() {
-                  if rightIndex < rightItems.count {
-                    right.selectedItem = rightItems[rightIndex]
-                    right.setNeedsLayout()
-                    right.layoutIfNeeded()
-                    rightIndex += 1
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                      selectNextRight()
-                    }
-                  } else {
-                    // Restore original selection (nil means no selection on this bar)
-                    right.selectedItem = rightOriginal
-                    right.setNeedsLayout()
-                    right.layoutIfNeeded()
-                    // Restore delegates + animations
-                    left.delegate = self
-                    right.delegate = self
-                    UIView.setAnimationsEnabled(true)
-                  }
-                }
-                selectNextRight()
-              }
-            }
-            selectNextLeft()
           }
         }
         result(nil)
@@ -1089,6 +1033,27 @@ channel.setMethodCallHandler { [weak self] call, result in
   }
 
   func view() -> UIView { container }
+
+  // iOS 26 sizes item labels at the bar's width when the item views are built
+  // and does not resize them when the bar widens, so a bar first laid out
+  // narrow (before Flutter sizes the platform view) keeps "…" labels.
+  // Rebuilding the item views at the new width resizes them.
+  private func relayoutLabelsIfWidthChanged() {
+    let width = container.bounds.width
+    guard width > 0, abs(width - labelLayoutWidth) > 0.5 else { return }
+    labelLayoutWidth = width
+    UIView.performWithoutAnimation {
+      for bar in [tabBar, tabBarLeft, tabBarRight].compactMap({ $0 }) {
+        guard let items = bar.items, !items.isEmpty else { continue }
+        let selected = bar.selectedItem
+        bar.delegate = nil
+        bar.items = nil
+        bar.items = items
+        bar.selectedItem = selected
+        bar.delegate = self
+      }
+    }
+  }
 
   /// How much a custom label is taller than the native 10pt one. The bar
   /// keeps its height and grows the label up into the icon, so it is split
