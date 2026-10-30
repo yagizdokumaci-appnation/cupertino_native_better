@@ -95,6 +95,11 @@ final class CNActionSheetManager: NSObject {
         let alert = UIAlertController(title: config.title,
                                       message: config.message,
                                       preferredStyle: .actionSheet)
+        // The sheet inherits the window's trait collection, which follows the
+        // system appearance, not the Flutter theme. Pin it to the app's theme.
+        if let isDark = config.isDark {
+            alert.overrideUserInterfaceStyle = isDark ? .dark : .light
+        }
 
         let padded = CNVerticalActions.applies(
             requested: config.forceVerticalActions,
@@ -263,12 +268,14 @@ final class CNActionSheetManager: NSObject {
         let cancelLabel: String?
         let actions: [Action]
         let anchorRect: CGRect?
+        let isDark: Bool?
         let forceVerticalActions: Bool
 
         init(args: [String: Any]) {
             title = args["title"] as? String
             message = args["message"] as? String
             cancelLabel = args["cancelLabel"] as? String
+            isDark = args["isDark"] as? Bool
             forceVerticalActions = args["forceVerticalActions"] as? Bool ?? false
 
             let raw = args["actions"] as? [[String: Any]] ?? []

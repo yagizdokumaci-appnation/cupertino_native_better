@@ -127,6 +127,7 @@ class _CNGlassButtonGroupState extends State<CNGlassButtonGroup>
   Axis? _lastAxis;
   double? _lastSpacing;
   double? _lastSpacingForGlass;
+  bool? _lastIsDark;
 
   // Issue #29 halo containment via setTransitioning.
   // Driven only by route-transition animations; the modal-up trigger has been
@@ -142,6 +143,16 @@ class _CNGlassButtonGroupState extends State<CNGlassButtonGroup>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _attachSecondaryRouteAnim();
+    _syncBrightnessIfNeeded();
+  }
+
+  void _syncBrightnessIfNeeded() {
+    final ch = _channel;
+    if (ch == null) return;
+    final isDark = ThemeHelper.isDark(context);
+    if (_lastIsDark == isDark) return;
+    _lastIsDark = isDark;
+    ch.invokeMethod('setBrightness', {'isDark': isDark}).catchError((_) {});
   }
 
   @override
@@ -377,6 +388,7 @@ class _CNGlassButtonGroupState extends State<CNGlassButtonGroup>
   void _onCreated(int id) {
     final channel = MethodChannel('CupertinoNativeGlassButtonGroup_$id');
     _channel = channel;
+    _lastIsDark = ThemeHelper.isDark(context);
     _pushContainmentIfNeeded();
     channel.setMethodCallHandler((call) async {
       if (call.method == 'buttonPressed') {

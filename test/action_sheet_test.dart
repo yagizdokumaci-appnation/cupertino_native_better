@@ -291,6 +291,34 @@ void main() {
     });
   });
 
+  group('CNActionSheet.show follows the app theme', () {
+    for (final brightness in Brightness.values) {
+      testWidgets('sends isDark for a ${brightness.name} app theme', (
+        tester,
+      ) async {
+        MethodCall? received;
+        mockChannel((call) async {
+          received = call;
+          return null;
+        });
+
+        await _withPlatform(TargetPlatform.iOS, () async {
+          final context = await _pumpContext(tester, brightness: brightness);
+          await CNActionSheet.show<String>(
+            context: context,
+            actions: const [CNActionSheetAction(label: 'Share', value: 's')],
+            cancelLabel: 'Cancel',
+          );
+        });
+
+        expect(
+          (received?.arguments as Map)['isDark'],
+          brightness == Brightness.dark,
+        );
+      });
+    }
+  });
+
   group('CNActionSheet.show on non-iOS', () {
     testWidgets('does not call the channel and shows the fallback', (
       tester,
@@ -417,10 +445,14 @@ Future<void> _withPlatform(
 
 /// Pumps a minimal Cupertino app and returns a [BuildContext] below a
 /// [Navigator], which the fallback path needs to push its route.
-Future<BuildContext> _pumpContext(WidgetTester tester) async {
+Future<BuildContext> _pumpContext(
+  WidgetTester tester, {
+  Brightness? brightness,
+}) async {
   late BuildContext captured;
   await tester.pumpWidget(
     CupertinoApp(
+      theme: CupertinoThemeData(brightness: brightness),
       home: Builder(
         builder: (context) {
           captured = context;
