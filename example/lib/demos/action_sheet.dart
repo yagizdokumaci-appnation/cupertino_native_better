@@ -122,6 +122,19 @@ class _ActionSheetDemoPageState extends State<ActionSheetDemoPage> {
     _record(choice);
   }
 
+  Future<void> _showPreferredVertical() async {
+    final choice = await CNActionSheet.show<String>(
+      context: context,
+      title: 'Keep this draft?',
+      actions: const [
+        CNActionSheetAction(label: 'Keep', value: 'keep', isDefault: true),
+      ],
+      cancelLabel: 'Discard',
+      forceVerticalActions: true,
+    );
+    _record(choice);
+  }
+
   /// Deliberately exceeds the four-button ceiling the HIG recommends, so the
   /// scrolling behaviour is visible.
   Future<void> _showLongList() async {
@@ -216,6 +229,7 @@ class _ActionSheetDemoPageState extends State<ActionSheetDemoPage> {
             _trigger('Title and message only', _showTitleAndMessageOnly),
             _trigger('Disabled action', _showWithDisabledAction),
             _trigger('Long list (6 actions)', _showLongList),
+            _trigger('Preferred + vertical (iOS 26)', _showPreferredVertical),
 
             const SizedBox(height: 8),
             const Text(

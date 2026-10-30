@@ -245,8 +245,12 @@ class CNTabBar extends StatefulWidget {
 
   /// Optional font size for tab bar item labels.
   ///
-  /// Applies to [labelFontFamily] when set, otherwise to the system font. When
-  /// null, the system default size is used (approximately 10pt on iOS).
+  /// On the iOS 26 native bar it applies to [labelFontFamily] when set,
+  /// otherwise to the system font. The Flutter fallback applies it only
+  /// together with [labelFontFamily], except with [searchItem], where it
+  /// applies on its own. The native bar ignores both when [searchItem] is
+  /// set. When null, the system default size is used (approximately 10pt on
+  /// iOS, 12pt in the fallback with [searchItem]).
   final double? labelFontSize;
 
   /// Optional extra gap, in points, between each item's icon and its label.
@@ -392,6 +396,7 @@ class _CNTabBarState extends State<CNTabBar> {
   // platform view for a SizedBox during forward/reverse status makes the
   // page Flutter-only for the slide, eliminating the artifact.
   bool _pageTransitioning = false;
+  bool _labelRefreshPending = false;
   Animation<double>? _secondaryRouteAnim;
 
   bool get _isDark => ThemeHelper.isDark(context);
@@ -457,6 +462,7 @@ class _CNTabBarState extends State<CNTabBar> {
     if (isAnimating != _pageTransitioning && mounted) {
       setState(() => _pageTransitioning = isAnimating);
     }
+    if (!isAnimating) _flushLabelRefresh();
   }
 
   void _attachSecondaryRouteAnim() {
@@ -491,6 +497,7 @@ class _CNTabBarState extends State<CNTabBar> {
         if (_pageTransitioning) {
           _pageTransitioning = false;
         }
+        _flushLabelRefresh();
       }
     }
     _syncPropsToNativeIfNeeded();
@@ -640,6 +647,9 @@ class _CNTabBarState extends State<CNTabBar> {
     if (_creationParams!['selectedIndex'] != widget.currentIndex) {
       _creationParams!['selectedIndex'] = widget.currentIndex;
     }
+    _creationParams!['split'] = _hasSearch ? true : widget.split;
+    _creationParams!['rightCount'] = widget.rightCount;
+    _creationParams!['splitSpacing'] = widget.splitSpacing;
     _creationParams!['rightCircular'] = widget.circularRightItem;
     if (widget.labelSpacing != null) {
       _creationParams!['labelSpacing'] = widget.labelSpacing;
@@ -953,17 +963,28 @@ class _CNTabBarState extends State<CNTabBar> {
     _channel = ch;
     ch.setMethodCallHandler(_onMethodCall);
     _lastIndex = widget.currentIndex;
-    _lastTint = resolveColorToArgb(_effectiveTint, context);
-    _lastBg = resolveColorToArgb(widget.backgroundColor, context);
-    _lastIsDark = _isDark;
+    // The native view was built from _creationParams, which is cached from
+    // the first mount. Seed the diff state from it (not from the current
+    // widget) so props changed since then — a badge, a label, the theme —
+    // are pushed to a view recreated after a modal closes.
+    final params = _creationParams!;
+    final style = params['style'] as Map<String, dynamic>;
+    _lastTint = style['tint'] as int?;
+    _lastBg = style['backgroundColor'] as int?;
+    _lastIsDark = params['isDark'] as bool?;
     _requestIntrinsicSize();
-    _cacheItems();
+    _lastLabels = params['labels'] as List<String>;
+    _lastSymbols = params['sfSymbols'] as List<String>;
+    _lastActiveSymbols = params['activeSfSymbols'] as List<String>;
+    _lastBadges = params['badges'] as List<String>;
     _lastSplit = widget.split;
     _lastRightCount = widget.rightCount;
     _lastCircularRightItem = widget.circularRightItem;
     _lastSplitSpacing = widget.splitSpacing;
-    _lastLabelFontFamily = widget.labelFontFamily;
-    _lastLabelFontSize = widget.labelFontSize;
+    _lastLabelFontFamily = params['labelFontFamily'] as String?;
+    _lastLabelFontSize = params['labelFontSize'] as double?;
+    _syncBrightnessIfNeeded();
+    _syncPropsToNativeIfNeeded();
     _lastLabelSpacing = widget.labelSpacing;
 
     // Force refresh for label rendering (Issue #6: sporadic missing
@@ -973,9 +994,9 @@ class _CNTabBarState extends State<CNTabBar> {
     // missing-label bug isn't limited to iOS < 16.
     //
     // To avoid the visible "tabs activate in sequence on launch" glitch
-    // (Issue #35), the Swift refresh wraps the cycle in
-    // `UIView.setAnimationsEnabled(false)` so the Liquid Glass selection
-    // pill doesn't morph between tabs while we cycle.
+    // (Issue #35), the Swift refresh runs the whole cycle in one main-queue
+    // block without animation, so no intermediate selection reaches the
+    // screen.
     //
     // Order matters: setSelectedIndex must run BEFORE refresh on each
     // pass. Refresh captures `bar.selectedItem` at start and restores
@@ -983,8 +1004,21 @@ class _CNTabBarState extends State<CNTabBar> {
     // restore would override our intended index, leaving the bar stuck
     // at the stale creationParams selectedIndex = 0 (see auto-hide-on-
     // modal recreation flow).
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      Future.delayed(const Duration(milliseconds: 50), () async {
+    //
+    // A view recreated while a sheet closes over a PageRoute host sits in
+    // the unpainted IndexedStack slot with a zero frame, so refreshing now
+    // lays labels out truncated ("Ho…"). Defer until it is painted.
+    if (_pageTransitioning) {
+      _labelRefreshPending = true;
+    } else {
+      _scheduleLabelRefresh();
+    }
+  }
+
+  void _scheduleLabelRefresh() {
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    for (final delay in const [50, 200]) {
+      Future.delayed(Duration(milliseconds: delay), () async {
         if (mounted && _channel != null) {
           try {
             await _channel?.invokeMethod('setSelectedIndex', {
@@ -996,19 +1030,13 @@ class _CNTabBarState extends State<CNTabBar> {
           }
         }
       });
-      Future.delayed(const Duration(milliseconds: 200), () async {
-        if (mounted && _channel != null) {
-          try {
-            await _channel?.invokeMethod('setSelectedIndex', {
-              'index': widget.currentIndex,
-            });
-            await _channel?.invokeMethod('refresh');
-          } catch (e) {
-            // Ignore when platform view is being recreated
-          }
-        }
-      });
     }
+  }
+
+  void _flushLabelRefresh() {
+    if (!_labelRefreshPending) return;
+    _labelRefreshPending = false;
+    _scheduleLabelRefresh();
   }
 
   Future<dynamic> _onMethodCall(MethodCall call) async {
@@ -1234,16 +1262,6 @@ class _CNTabBarState extends State<CNTabBar> {
         // Ignore MissingPluginException during hot reload or view recreation
       }
     }
-  }
-
-  void _cacheItems() {
-    _lastLabels = widget.items.map((e) => e.label ?? '').toList();
-    _lastSymbols = widget.items.map((e) => e.icon?.name ?? '').toList();
-    _lastActiveSymbols = widget.items
-        .map((e) => e.activeIcon?.name ?? e.icon?.name ?? '')
-        .toList();
-    _lastBadges = widget.items.map((e) => e.badge ?? '').toList();
-    // Note: Custom icon bytes are cached in _syncPropsToNativeIfNeeded when rendered
   }
 
   Future<void> _requestIntrinsicSize() async {

@@ -2,9 +2,19 @@ import Flutter
 import UIKit
 import SVGKit
 
+private final class TabBarContainerView: UIView {
+  var onLayout: (() -> Void)?
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    onLayout?()
+  }
+}
+
 class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelegate {
   private let channel: FlutterMethodChannel
-  private let container: UIView
+  private let container: TabBarContainerView
+  private var labelLayoutWidth: CGFloat = 0
   private var tabBar: UITabBar?
   private var tabBarLeft: UITabBar?
   private var tabBarRight: UITabBar?
@@ -38,7 +48,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
 
   init(frame: CGRect, viewId: Int64, args: Any?, messenger: FlutterBinaryMessenger) {
     self.channel = FlutterMethodChannel(name: "CupertinoNativeTabBar_\(viewId)", binaryMessenger: messenger)
-    self.container = UIView(frame: frame)
+    self.container = TabBarContainerView(frame: frame)
 
     var labels: [String] = []
     var symbols: [String] = []
@@ -113,6 +123,7 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
 
     super.init()
 
+    container.onLayout = { [weak self] in self?.relayoutLabelsIfWidthChanged() }
     container.backgroundColor = .clear
     // Always clip the container to block the iOS 26 Liquid Glass drop
     // shadow from bleeding over modals (Issue #2). The Liquid Glass
@@ -133,6 +144,11 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     container.layer.shadowOpacity = 0 // Explicitly disable layer shadow
     if #available(iOS 13.0, *) { container.overrideUserInterfaceStyle = isDark ? .dark : .light }
 
+    // Read the custom label font first: makeAppearance() below bakes it in.
+    if let dict = args as? [String: Any] {
+      if let ff = dict["labelFontFamily"] as? String, !ff.isEmpty { self.labelFontFamily = ff }
+      if let fs = dict["labelFontSize"] as? NSNumber, fs.doubleValue > 0 { self.labelFontSize = CGFloat(truncating: fs) }
+    }
     let appearance: UITabBarAppearance? = {
       if #available(iOS 13.0, *) { return self.makeAppearance() }
       return nil
@@ -427,11 +443,6 @@ class CupertinoTabBarPlatformView: NSObject, FlutterPlatformView, UITabBarDelega
     self.leftInsetVal = leftInset
     self.rightInsetVal = rightInset
     self.currentIconSizes = sizes.compactMap { $0 }.map { CGFloat(truncating: $0) }
-    // Read custom label font from creation params
-    if let dict = args as? [String: Any] {
-      if let ff = dict["labelFontFamily"] as? String, !ff.isEmpty { self.labelFontFamily = ff }
-      if let fs = dict["labelFontSize"] as? NSNumber, fs.doubleValue > 0 { self.labelFontSize = CGFloat(truncating: fs) }
-    }
 channel.setMethodCallHandler { [weak self] call, result in
       guard let self = self else { result(nil); return }
       switch call.method {
@@ -939,8 +950,10 @@ channel.setMethodCallHandler { [weak self] call, result in
       case "setFont":
         // Update label font and re-apply appearance to all tab bars
         if let args = call.arguments as? [String: Any] {
+          let oldExtra = self.labelExtraHeight
           self.labelFontFamily = (args["labelFontFamily"] as? String).flatMap { $0.isEmpty ? nil : $0 }
           self.labelFontSize = (args["labelFontSize"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
+          let extraDelta = self.labelExtraHeight - oldExtra
           if #available(iOS 13.0, *) {
             let ap = self.makeAppearance()
             if let bar = self.tabBar {
@@ -955,103 +968,51 @@ channel.setMethodCallHandler { [weak self] call, result in
               right.standardAppearance = ap
               if #available(iOS 15.0, *) { right.scrollEdgeAppearance = ap }
             }
+            // A new appearance does not reach item views that already exist,
+            // so re-set the items to make the bar lay them out again.
+            UIView.performWithoutAnimation {
+              for bar in [self.tabBar, self.tabBarLeft, self.tabBarRight].compactMap({ $0 }) {
+                let items = bar.items ?? []
+                let selected = bar.selectedItem
+                for item in items where item.title != nil {
+                  item.image = self.raised(item.image, by: extraDelta)
+                  item.selectedImage = self.raised(item.selectedImage, by: extraDelta)
+                }
+                bar.items = nil
+                bar.items = items
+                bar.selectedItem = selected
+              }
+            }
           }
           result(nil)
         } else { result(FlutterError(code: "bad_args", message: "Missing font args", details: nil)) }
       case "refresh":
-        // Force refresh for label rendering on iOS < 16.
+        // Force refresh for label rendering (Issue #6).
         // UITabBar only fully layouts labels when items are selected,
-        // so we temporarily select each item to force layout. The
-        // entire cycle is wrapped in `UIView.setAnimationsEnabled(false)`
-        // so the iOS 26 Liquid Glass selection pill doesn't morph
-        // visibly through every tab on launch (Issue #35).
-        if let bar = self.tabBar, let items = bar.items, !items.isEmpty {
-          let originalSelected = bar.selectedItem
-          // Temporarily remove delegate to prevent callbacks during refresh
-          bar.delegate = nil
-          DispatchQueue.main.async { [weak self, weak bar, weak originalSelected] in
-            guard let self = self, let bar = bar, let items = bar.items, !items.isEmpty else { return }
-            UIView.setAnimationsEnabled(false)
-            // Cycle through each item to force label layout
-            var index = 0
-            func selectNext() {
-              guard index < items.count else {
-                // Restore original selection
-                if let original = originalSelected {
-                  bar.selectedItem = original
-                } else {
-                  bar.selectedItem = items.first
-                }
+        // so we temporarily select each item to force layout. The whole
+        // cycle runs in one main-queue block: yielding between items let
+        // Core Animation commit each intermediate selection, which showed
+        // as the Liquid Glass pill jumping through every tab on launch.
+        DispatchQueue.main.async { [weak self] in
+          guard let self = self else { return }
+          let bars = [self.tabBar, self.tabBarLeft, self.tabBarRight].compactMap { $0 }
+          UIView.performWithoutAnimation {
+            for bar in bars {
+              guard let items = bar.items, !items.isEmpty else { continue }
+              let original = bar.selectedItem
+              // Temporarily remove delegate to prevent callbacks during refresh
+              bar.delegate = nil
+              for item in items {
+                bar.selectedItem = item
                 bar.setNeedsLayout()
                 bar.layoutIfNeeded()
-                // Restore delegate + animations
-                bar.delegate = self
-                UIView.setAnimationsEnabled(true)
-                return
               }
-              bar.selectedItem = items[index]
+              // A split bar may have no selection; the single bar falls back to its first item.
+              bar.selectedItem = original ?? (bar === self.tabBar ? items.first : nil)
               bar.setNeedsLayout()
               bar.layoutIfNeeded()
-              index += 1
-              DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                selectNext()
-              }
+              bar.delegate = self
             }
-            selectNext()
-          }
-        } else if let left = self.tabBarLeft, let right = self.tabBarRight {
-          let leftOriginal = left.selectedItem
-          let rightOriginal = right.selectedItem
-          // Temporarily remove delegates to prevent callbacks during refresh
-          left.delegate = nil
-          right.delegate = nil
-          DispatchQueue.main.async { [weak self, weak left, weak right, weak leftOriginal, weak rightOriginal] in
-            guard let self = self, let left = left, let right = right,
-                  let leftItems = left.items, let rightItems = right.items else { return }
-            UIView.setAnimationsEnabled(false)
-            // Process left items
-            var leftIndex = 0
-            func selectNextLeft() {
-              if leftIndex < leftItems.count {
-                left.selectedItem = leftItems[leftIndex]
-                left.setNeedsLayout()
-                left.layoutIfNeeded()
-                leftIndex += 1
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                  selectNextLeft()
-                }
-              } else {
-                // Restore original selection (nil means no selection on this bar)
-                left.selectedItem = leftOriginal
-                left.setNeedsLayout()
-                left.layoutIfNeeded()
-
-                // Process right items
-                var rightIndex = 0
-                func selectNextRight() {
-                  if rightIndex < rightItems.count {
-                    right.selectedItem = rightItems[rightIndex]
-                    right.setNeedsLayout()
-                    right.layoutIfNeeded()
-                    rightIndex += 1
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                      selectNextRight()
-                    }
-                  } else {
-                    // Restore original selection (nil means no selection on this bar)
-                    right.selectedItem = rightOriginal
-                    right.setNeedsLayout()
-                    right.layoutIfNeeded()
-                    // Restore delegates + animations
-                    left.delegate = self
-                    right.delegate = self
-                    UIView.setAnimationsEnabled(true)
-                  }
-                }
-                selectNextRight()
-              }
-            }
-            selectNextLeft()
           }
         }
         result(nil)
@@ -1073,20 +1034,51 @@ channel.setMethodCallHandler { [weak self] call, result in
 
   func view() -> UIView { container }
 
+  // iOS 26 sizes item labels at the bar's width when the item views are built
+  // and does not resize them when the bar widens, so a bar first laid out
+  // narrow (before Flutter sizes the platform view) keeps "…" labels.
+  // Rebuilding the item views at the new width resizes them.
+  private func relayoutLabelsIfWidthChanged() {
+    let width = container.bounds.width
+    guard width > 0, abs(width - labelLayoutWidth) > 0.5 else { return }
+    labelLayoutWidth = width
+    UIView.performWithoutAnimation {
+      for bar in [tabBar, tabBarLeft, tabBarRight].compactMap({ $0 }) {
+        guard let items = bar.items, !items.isEmpty else { continue }
+        let selected = bar.selectedItem
+        bar.delegate = nil
+        bar.items = nil
+        bar.items = items
+        bar.selectedItem = selected
+        bar.delegate = self
+      }
+    }
+  }
+
+  /// How much a custom label is taller than the native 10pt one. The bar
+  /// keeps its height and grows the label up into the icon, so it is split
+  /// like labelSpacing: half moves the icon up, half moves the label down.
+  private var labelExtraHeight: CGFloat {
+    guard labelFontFamily != nil || labelFontSize > 0 else { return 0 }
+    let size = labelFontSize > 0 ? labelFontSize : 10.0
+    let font = labelFontFamily.flatMap { UIFont(name: $0, size: size) } ?? UIFont.systemFont(ofSize: size, weight: .medium)
+    return max(0, font.lineHeight - UIFont.systemFont(ofSize: 10, weight: .medium).lineHeight)
+  }
+
   // iOS 26 ignores UITabBarItem.imageInsets and per-item titlePositionAdjustment,
   // but still honours an image's alignment rect and the appearance title offset.
-  // Half the gap goes to each so icon + label stay centred in the selection pill.
+  // The bar centres the alignment rect, so growing it by `amount` lifts the icon by half.
+  private func raised(_ image: UIImage?, by amount: CGFloat) -> UIImage? {
+    guard let image = image, amount != 0 else { return image }
+    var insets = image.alignmentRectInsets
+    insets.bottom -= amount
+    return image.withAlignmentRectInsets(insets)
+  }
+
   private func makeItem(title: String?, image: UIImage?, selectedImage: UIImage?) -> UITabBarItem {
-    guard labelSpacingVal > 0 else {
-      return UITabBarItem(title: title, image: image, selectedImage: selectedImage)
-    }
-    func raised(_ img: UIImage?) -> UIImage? {
-      guard let img = img else { return nil }
-      var insets = img.alignmentRectInsets
-      insets.bottom -= labelSpacingVal
-      return img.withAlignmentRectInsets(insets)
-    }
-    return UITabBarItem(title: title, image: raised(image), selectedImage: raised(selectedImage))
+    // Only an item with a label needs room for a taller one.
+    let raise = labelSpacingVal + (title == nil ? 0 : labelExtraHeight)
+    return UITabBarItem(title: title, image: raised(image, by: raise), selectedImage: raised(selectedImage, by: raise))
   }
 
   private func rightBarWidth(_ right: UITabBar, rightCount: Int, otherwise: NSLayoutConstraint) -> NSLayoutConstraint {
@@ -1121,10 +1113,19 @@ channel.setMethodCallHandler { [weak self] call, result in
     ap.shadowColor = .clear
     ap.shadowImage = UIImage()
     applyLabelFont(to: ap)
-    if labelSpacingVal > 0 {
-      let offset = UIOffset(horizontal: 0, vertical: labelSpacingVal / 2)
+    let extra = labelExtraHeight
+    if labelSpacingVal > 0 || extra > 0 {
+      let offset = UIOffset(horizontal: 0, vertical: (labelSpacingVal + extra) / 2)
       ap.stackedLayoutAppearance.normal.titlePositionAdjustment = offset
       ap.stackedLayoutAppearance.selected.titlePositionAdjustment = offset
+    }
+    // Inline (icon beside label, iPad): the label follows the icon up instead.
+    if extra > 0 {
+      let inline = UIOffset(horizontal: 0, vertical: -extra / 2)
+      for layout in [ap.inlineLayoutAppearance, ap.compactInlineLayoutAppearance] {
+        layout.normal.titlePositionAdjustment = inline
+        layout.selected.titlePositionAdjustment = inline
+      }
     }
     return ap
   }

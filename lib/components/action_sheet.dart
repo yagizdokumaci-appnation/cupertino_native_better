@@ -29,6 +29,7 @@ class CNActionSheetAction<T> {
     required this.label,
     this.value,
     this.isDestructive = false,
+    this.isDefault = false,
     this.enabled = true,
   });
 
@@ -52,6 +53,11 @@ class CNActionSheetAction<T> {
   /// would silently break the mapping from index to [value] — so put the
   /// destructive action first yourself.
   final bool isDestructive;
+
+  /// Marks the action as the preferred one (`UIAlertController.preferredAction`),
+  /// which iOS 26 draws as a filled button. UIKit documents `preferredAction`
+  /// as alert-only: earlier iOS and the Flutter fallback ignore it.
+  final bool isDefault;
 
   /// Whether the action can be selected. A disabled action renders greyed out
   /// and ignores taps.
@@ -134,6 +140,13 @@ class CNActionSheet {
   ///
   /// Apple's Human Interface Guidelines recommend at most four buttons
   /// including cancel. Longer lists work, but scroll.
+  ///
+  /// [forceVerticalActions] stacks exactly two buttons vertically even when
+  /// both labels are short enough to sit side by side. UIKit exposes no layout
+  /// axis, so the native side pads the end of each label with no-break spaces
+  /// until UIKit stops fitting them in one row; VoiceOver still reads the
+  /// plain label. iOS 26 and later only: earlier iOS keeps UIKit's own layout,
+  /// and the Flutter fallback ignores it.
   static Future<T?> show<T>({
     required BuildContext context,
     required List<CNActionSheetAction<T>> actions,
@@ -141,11 +154,17 @@ class CNActionSheet {
     String? message,
     String? cancelLabel,
     Rect? anchorRect,
+    bool forceVerticalActions = false,
   }) {
     assert(
       cancelLabel != null || actions.any((a) => a.enabled),
       'CNActionSheet.show needs a cancelLabel or at least one enabled action: '
       'a sheet with neither has nothing to press and never resolves.',
+    );
+    assert(
+      actions.where((a) => a.isDefault).length <= 1,
+      'CNActionSheet.show accepts at most one action with isDefault: '
+      'UIAlertController.preferredAction holds a single action.',
     );
     // `actions` is often built from a collection that can come out empty, and
     // `enabled` is often computed per action from one flag that can be false
@@ -174,6 +193,7 @@ class CNActionSheet {
       message: message,
       cancelLabel: cancelLabel,
       anchorRect: anchorRect,
+      forceVerticalActions: forceVerticalActions,
     );
   }
 
@@ -183,6 +203,7 @@ class CNActionSheet {
     required String? message,
     required String? cancelLabel,
     required Rect? anchorRect,
+    required bool forceVerticalActions,
   }) async {
     final payload = debugBuildActionSheetPayload(
       actions: actions,
@@ -190,6 +211,7 @@ class CNActionSheet {
       message: message,
       cancelLabel: cancelLabel,
       anchorRect: anchorRect,
+      forceVerticalActions: forceVerticalActions,
     );
 
     try {
@@ -259,17 +281,20 @@ Map<String, Object?> debugBuildActionSheetPayload({
   String? message,
   String? cancelLabel,
   Rect? anchorRect,
+  bool forceVerticalActions = false,
 }) {
   return <String, Object?>{
     'title': title,
     'message': message,
     'cancelLabel': cancelLabel,
+    'forceVerticalActions': forceVerticalActions,
     'actions': [
       for (final action in actions)
         <String, Object?>{
           'label': action.label,
           'destructive': action.isDestructive,
           'enabled': action.enabled,
+          'preferred': action.isDefault,
         },
     ],
     if (anchorRect != null)
