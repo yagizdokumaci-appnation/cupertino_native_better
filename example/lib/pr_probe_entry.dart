@@ -26,12 +26,18 @@
 //    textfield | secure | twofields | supersede; the alert opens itself on the
 //    first frame.)
 //
+//   flutter run -t lib/pr_probe_entry.dart \
+//     --dart-define=PROBE=darkmode --dart-define=LABEL=after
+//   (run with the simulator in dark appearance; the page flips its theme to
+//    light, then opens an action sheet, logging CNPROBE markers.)
+//
 // PROBE=pr67report additionally dumps the MAE/cost table to the run log.
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show DefaultMaterialLocalizations;
 
 import 'demos/action_sheet.dart';
+import 'demos/dark_mode_sync_probe.dart';
 import 'demos/pr66_glass_image_asset_tint_test.dart';
 import 'demos/pr67_icon_supersample_test.dart';
 import 'demos/pr69_glass_effect_test.dart';
@@ -113,6 +119,9 @@ class _ProbeApp extends StatelessWidget {
         label: _label,
         autoCycle: true,
       );
+    }
+    if (_probe == 'darkmode') {
+      return DarkModeSyncProbePage(label: _label);
     }
     if (_probe == 'alert') {
       return AlertDemoPage(autoScenario: _scenario);

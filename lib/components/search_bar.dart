@@ -213,6 +213,8 @@ class _CNSearchBarState extends State<CNSearchBar>
   // Issue #29 halo containment via setTransitioning.
   Animation<double>? _secondaryRouteAnim;
 
+  bool? _lastIsDark;
+
   CNSearchBarController get _controller =>
       widget.controller ?? (_internalController ??= CNSearchBarController());
 
@@ -250,6 +252,16 @@ class _CNSearchBarState extends State<CNSearchBar>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _attachSecondaryRouteAnim();
+    _syncBrightnessIfNeeded();
+  }
+
+  void _syncBrightnessIfNeeded() {
+    final ch = _channel;
+    if (ch == null) return;
+    final isDark = ThemeHelper.isDark(context);
+    if (_lastIsDark == isDark) return;
+    _lastIsDark = isDark;
+    ch.invokeMethod('setBrightness', {'isDark': isDark}).catchError((_) {});
   }
 
   @override
@@ -312,6 +324,7 @@ class _CNSearchBarState extends State<CNSearchBar>
     _channel = ch;
     _controller._attach(ch);
     ch.setMethodCallHandler(_onMethodCall);
+    _lastIsDark = ThemeHelper.isDark(context);
     _pushContainmentIfNeeded();
   }
 
